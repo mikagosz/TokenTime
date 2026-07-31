@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Klucze i certyfikaty — .p12 zawiera klucz prywatny do podpisywania kodu
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+
+# Xcode — stan użytkownika
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Build
+build/
+DerivedData/
+*.dSYM
+*.dSYM.zip
+*.hmap
+*.ipa
+
+# Swift Package Manager
+.build/
+.swiftpm/
