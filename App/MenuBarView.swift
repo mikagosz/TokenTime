@@ -6,6 +6,7 @@ import AppKit
 struct MenuBarView: View {
     @Environment(AccountStore.self) private var store
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var showingSettings = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,12 +21,43 @@ struct MenuBarView: View {
 
     private var header: some View {
         HStack {
-            TokenTimeGlyph()
+            Image("MenuBarIcon")
+                .resizable()
+                .interpolation(.high)
                 .frame(width: 18, height: 18)
-                .foregroundStyle(.tint)
             Text("TokenTime")
                 .font(.headline)
+            Text("v1.0.1")
+                .font(.caption2.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.secondary.opacity(0.18))
+                }
             Spacer()
+            Button {
+                store.add()
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Dodaj konto")
+            Button {
+                showingSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Ustawienia")
+            .popover(isPresented: $showingSettings, arrowEdge: .bottom) {
+                SettingsView()
+                    .environment(store)
+            }
         }
         .padding(12)
     }
@@ -62,31 +94,19 @@ struct MenuBarView: View {
     }
 
     private var footer: some View {
-        VStack(spacing: 8) {
-            Button {
-                store.add()
-            } label: {
-                Label("Dodaj konto", systemImage: "plus")
-                    .frame(maxWidth: .infinity)
+        HStack {
+            Toggle("Uruchom przy starcie", isOn: $launchAtLogin)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .onChange(of: launchAtLogin) { _, enabled in
+                    LaunchAtLogin.set(enabled)
+                }
+            Spacer()
+            Button("Zakończ") {
+                NSApp.terminate(nil)
             }
             .buttonStyle(.borderless)
-
-            Divider()
-
-            HStack {
-                Toggle("Uruchom przy starcie", isOn: $launchAtLogin)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
-                    .onChange(of: launchAtLogin) { _, enabled in
-                        LaunchAtLogin.set(enabled)
-                    }
-                Spacer()
-                Button("Zakończ") {
-                    NSApp.terminate(nil)
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
-            }
+            .font(.caption)
         }
         .padding(12)
     }

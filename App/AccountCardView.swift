@@ -79,6 +79,7 @@ struct AccountCardView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
+            computerToggles
             if account.resetDate != nil {
                 Button {
                     store.clearReset(id: account.id)
@@ -103,6 +104,46 @@ struct AccountCardView: View {
     private func beginEditingName() {
         isEditingName = true
         nameFocused = true
+    }
+
+    // MARK: Komputery (na którym profil jest zalogowany)
+
+    /// Checkboxy z ikonami komputerów, od lewej do prawej, przy przycisku
+    /// anulowania odliczania. Przełączanie nie wpływa na zegar — zmienia
+    /// tylko `account.computers`.
+    @ViewBuilder
+    private var computerToggles: some View {
+        let enabled = Computer.allCases.filter { store.enabledComputers.contains($0) }
+        if !enabled.isEmpty {
+            HStack(spacing: 4) {
+                ForEach(enabled) { computer in
+                    let isOn = account.computers.contains(computer)
+                    Button {
+                        toggleComputer(computer)
+                    } label: {
+                        Image(systemName: computer.systemImage)
+                            .imageScale(.small)
+                            .foregroundStyle(isOn ? Color.accentColor : .secondary)
+                            .frame(width: 22, height: 22)
+                            .background {
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(isOn ? Color.accentColor.opacity(0.18)
+                                               : Color.secondary.opacity(0.12))
+                            }
+                    }
+                    .buttonStyle(.borderless)
+                    .help("\(computer.displayName): \(isOn ? "zalogowany" : "niezalogowany")")
+                }
+            }
+        }
+    }
+
+    private func toggleComputer(_ computer: Computer) {
+        if account.computers.contains(computer) {
+            account.computers.remove(computer)
+        } else {
+            account.computers.insert(computer)
+        }
     }
 
     // MARK: Odliczanie
@@ -177,9 +218,16 @@ struct AccountCardView: View {
     }
 
     /// Czyści licznik i od razu otwiera pole na nowy czas.
+    ///
+    /// Wyczyszczenie `resetDate` przebudowuje kartę (znika zielony przycisk,
+    /// zmienia się jej wysokość). Otwarcie popovera w tym samym cyklu układu
+    /// potrafiło wywalać AppKit („gotowe → Reset” zamykało apkę). Prezentację
+    /// popovera odkładamy więc na kolejny obrót pętli, gdy układ się ustali.
     private func resetAndEnterNew() {
         account.resetDate = nil
-        showingEntry = true
+        Task { @MainActor in
+            showingEntry = true
+        }
     }
 }
 

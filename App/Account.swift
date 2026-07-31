@@ -1,5 +1,36 @@
 import SwiftUI
 
+// MARK: - Typy komputerów
+
+/// Komputery, na których dany profil może być zalogowany.
+/// Kolejność `allCases` wyznacza kolejność checkboxów od lewej do prawej.
+enum Computer: String, Codable, CaseIterable, Identifiable, Hashable {
+    case macMini
+    case iMac
+    case macBook
+    case macStudio
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .macMini:   return "Mac mini"
+        case .iMac:      return "iMac"
+        case .macBook:   return "MacBook"
+        case .macStudio: return "Mac Studio"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .macMini:   return "macmini"
+        case .iMac:      return "desktopcomputer"
+        case .macBook:   return "laptopcomputer"
+        case .macStudio: return "macstudio"
+        }
+    }
+}
+
 // MARK: - Model konta
 
 struct Account: Identifiable, Codable, Equatable {
@@ -7,6 +38,30 @@ struct Account: Identifiable, Codable, Equatable {
     var name: String
     var resetDate: Date?          // nil = brak aktywnego licznika
     var windowHours: Double = 5   // pełne okno (do paska postępu), domyślnie 5h
+    var computers: Set<Computer> = []   // komputery, na których profil jest zalogowany
+
+    init(id: UUID = UUID(),
+         name: String,
+         resetDate: Date? = nil,
+         windowHours: Double = 5,
+         computers: Set<Computer> = []) {
+        self.id = id
+        self.name = name
+        self.resetDate = resetDate
+        self.windowHours = windowHours
+        self.computers = computers
+    }
+
+    // Tolerancyjne dekodowanie — starsze pliki bez pól `windowHours`/`computers`
+    // nie mogą wywalać całego wczytywania (inaczej użytkownik straciłby konta).
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        resetDate = try c.decodeIfPresent(Date.self, forKey: .resetDate)
+        windowHours = try c.decodeIfPresent(Double.self, forKey: .windowHours) ?? 5
+        computers = try c.decodeIfPresent(Set<Computer>.self, forKey: .computers) ?? []
+    }
 }
 
 // MARK: - Status i wielkości pochodne
