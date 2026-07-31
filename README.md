@@ -1,7 +1,16 @@
-# TokenTime
+<p align="center">
+  <img src="docs/assets/tokentime-icon.png" width="160" alt="TokenTime app icon">
+</p>
 
-A macOS menu bar app that tracks when your Claude usage windows reset — across as
+## TokenTime
+
+**Know when your next window opens — at a glance.**
+A macOS menu bar app that tracks when your Claude usage windows reset, across as
 many accounts and as many Macs as you use.
+
+[![Xcode 26+](https://img.shields.io/badge/Xcode-26%2B-147EFB?logo=xcode&logoColor=white)](https://developer.apple.com/xcode/)
+[![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)](https://www.apple.com/macos)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Click the menu bar icon and you get every account with a live countdown. The label
 in the menu bar always shows the one resetting soonest, so a glance is enough.
