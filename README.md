@@ -31,9 +31,11 @@ head or in a note somewhere. TokenTime puts it in the menu bar and keeps it ther
 
 - **Any number of accounts**, each with an editable name (double-click or the
   pencil icon).
-- **Set a reset with one text field.** Type `4h`, `1h30m`, `90m`, `45s` — or just
-  `4`, which means four hours. The popover previews the resulting clock time and
-  rejects anything it can't parse.
+- **Set a reset with one text field.** Type a clock duration — `3:30` is three
+  and a half hours, `0:45` is forty-five minutes — or a bare number of hours, so
+  `4` means four hours. Nothing else is accepted: `4h` and `90m` are rejected.
+  The popover previews the resulting clock time and refuses anything it can't
+  parse.
 - **Native countdowns** via `Text(timerInterval:)`, so the numbers tick without a
   timer of our own running behind the window.
 - **Status at a glance**, mirrored by both the card colour and its progress bar:
@@ -41,8 +43,9 @@ head or in a note somewhere. TokenTime puts it in the menu bar and keeps it ther
   - **amber** — running, under an hour
   - **green** — the window has reset and is ready to use again
 - **Reset** clears the counter and immediately opens the field for the next one.
-- **Progress bar** measured against a configurable window length (5 hours by
-  default).
+- **Progress bar** spanning exactly the duration you entered, so it always starts
+  empty and reaches the end at the reset. (There is no separate window-length
+  setting — the field you type into *is* the window.)
 
 ### Across your Macs
 
@@ -54,6 +57,20 @@ head or in a note somewhere. TokenTime puts it in the menu bar and keeps it ther
   `~/Library/Mobile Documents/com~apple~CloudDocs/TokenTime/accounts.json`, polled
   every seven seconds, so a reset you set on one Mac shows up on the others.
   Changes arriving from another machine don't bounce back out as a new write.
+  Reads and writes go through `NSFileCoordinator`, because the file is swapped
+  underneath us by the iCloud daemon.
+- **Merged per account, not per file.** Every account carries the time it last
+  changed, and syncing picks the newer version of each account separately. Two
+  Macs editing two different accounts inside the same polling window both keep
+  their edit. Deletions leave a tombstone for thirty days so a deleted account
+  doesn't come back from another Mac's copy.
+- **Nothing is written until the cloud state is known.** If the file exists in
+  iCloud but hasn't been downloaded to this Mac yet, the panel says so and stays
+  read-only rather than showing an empty list you could overwrite the cloud with.
+  If the download stalls, an explicit button lets you carry on locally — and even
+  then the cloud file is left alone until it arrives.
+- **Visible sync state.** A small badge next to the app name says whether the last
+  exchange worked, and why not if it didn't.
 - **Local fallback** — if iCloud Drive isn't available the accounts are kept in
   `UserDefaults`, and nothing is lost.
 
@@ -104,14 +121,22 @@ means it isn't headed for the App Store.
 | File | Role |
 |---|---|
 | `ContentView.swift` | `@main` app with `MenuBarExtra` and the `AppDelegate` |
-| `Account.swift` | account model, reset status, computer list |
-| `AccountStore.swift` | storage, iCloud sync, menu bar summary |
+| `Account.swift` | account model, change stamp, reset status, computer list |
+| `AccountStore.swift` | state, merging, debounced saving, menu bar summary |
+| `AccountsFile.swift` | coordinated reads and writes of the iCloud Drive file |
 | `MenuBarView.swift` | the main panel |
-| `AccountCardView.swift` | a single account card |
+| `AccountCardView.swift` | a single account card, plus the duration parser |
 | `MenuBarLabel.swift` | the menu bar label |
 | `SettingsView.swift` | which computers you own |
 | `LaunchAtLogin.swift` | login item registration |
-| `TokenTimeGlyph.swift` | app glyph |
+| `Log.swift` | `os.Logger` categories |
+
+Tests live in `Tests/` and cover the pure parts: the duration parser, account
+status and progress, the menu bar summary, and the merge rules.
+
+```bash
+xcodebuild -project TokenTime.xcodeproj -scheme TokenTime test
+```
 
 ## Licence
 

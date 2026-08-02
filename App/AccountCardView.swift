@@ -77,6 +77,8 @@ struct AccountCardView: View {
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
+                .help("Zmień nazwę")
+                .accessibilityLabel("Zmień nazwę konta \(account.name)")
             }
             Spacer()
             computerToggles
@@ -89,6 +91,7 @@ struct AccountCardView: View {
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
                 .help("Anuluj odliczanie")
+                .accessibilityLabel("Anuluj odliczanie konta \(account.name)")
             }
             Button {
                 confirmingDelete = true
@@ -98,6 +101,7 @@ struct AccountCardView: View {
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
             .help("Usuń konto")
+            .accessibilityLabel("Usuń konto \(account.name)")
         }
     }
 
@@ -133,6 +137,9 @@ struct AccountCardView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("\(computer.displayName): \(isOn ? "zalogowany" : "niezalogowany")")
+                    .accessibilityLabel("\(computer.displayName), konto \(account.name)")
+                    .accessibilityValue(isOn ? "zalogowany" : "niezalogowany")
+                    .accessibilityAddTraits(isOn ? [.isSelected] : [])
                 }
             }
         }
