@@ -33,23 +33,57 @@ enum Computer: String, Codable, CaseIterable, Identifiable, Hashable {
 
 // MARK: - Model konta
 
-struct Account: Identifiable, Codable, Equatable {
-    var id: UUID = UUID()
-    var name: String
-    var resetDate: Date?          // nil = brak aktywnego licznika
-    var windowHours: Double = 5   // pełne okno (do paska postępu), domyślnie 5h
-    var computers: Set<Computer> = []   // komputery, na których profil jest zalogowany
+/// Konto wraz ze znacznikiem ostatniej zmiany.
+///
+/// `updatedAt` jest podbijane automatycznie przy każdej realnej zmianie pola —
+/// widoki mutują konto przez `@Binding`, więc nie ma innego miejsca, w którym
+/// dałoby się to zrobić raz a dobrze. To ten znacznik pozwala scalać zmiany
+/// z dwóch Maków per konto, zamiast podmieniać całą tablicę (P2-03).
+struct Account: Identifiable, Codable, Equatable, Sendable {
+    var id: UUID
+
+    var name: String {
+        didSet { if name != oldValue { updatedAt = Date() } }
+    }
+
+    /// nil = brak aktywnego licznika
+    var resetDate: Date? {
+        didSet { if resetDate != oldValue { updatedAt = Date() } }
+    }
+
+    /// Pełne okno (do paska postępu), domyślnie 5h. Nadpisywane wpisanym czasem.
+    var windowHours: Double {
+        didSet { if windowHours != oldValue { updatedAt = Date() } }
+    }
+
+    /// Komputery, na których profil jest zalogowany.
+    var computers: Set<Computer> {
+        didSet { if computers != oldValue { updatedAt = Date() } }
+    }
+
+    /// Kiedy konto ostatnio zmieniono. Rozstrzyga scalanie między Makami.
+    private(set) var updatedAt: Date
+
+    /// Nagrobek po usuniętym koncie. Trzymany w pliku, dopóki pozostałe Maki
+    /// się o usunięciu nie dowiedzą — inaczej konto wracałoby z ich kopii.
+    private(set) var deletedAt: Date?
+
+    var isDeleted: Bool { deletedAt != nil }
 
     init(id: UUID = UUID(),
          name: String,
          resetDate: Date? = nil,
          windowHours: Double = 5,
-         computers: Set<Computer> = []) {
+         computers: Set<Computer> = [],
+         updatedAt: Date = Date(),
+         deletedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.resetDate = resetDate
         self.windowHours = windowHours
         self.computers = computers
+        self.updatedAt = updatedAt
+        self.deletedAt = deletedAt
     }
 
     // Tolerancyjne dekodowanie — starsze pliki bez pól `windowHours`/`computers`
@@ -61,6 +95,23 @@ struct Account: Identifiable, Codable, Equatable {
         resetDate = try c.decodeIfPresent(Date.self, forKey: .resetDate)
         windowHours = try c.decodeIfPresent(Double.self, forKey: .windowHours) ?? 5
         computers = try c.decodeIfPresent(Set<Computer>.self, forKey: .computers) ?? []
+        // Plik zapisany przed wprowadzeniem scalania nie ma znaczników.
+        // `stampIfMissing(_:)` uzupełnia je datą modyfikacji pliku.
+        updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
+        deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+    }
+
+    /// Uzupełnia brakujący znacznik zmiany datą pliku, z którego konto pochodzi.
+    /// Bez tego wszystkie wpisy ze starego pliku miałyby `.distantPast` i przegrywały
+    /// nawet z dawno nieruszanym kontem po drugiej stronie.
+    mutating func stampIfMissing(_ date: Date) {
+        if updatedAt == .distantPast { updatedAt = date }
+    }
+
+    /// Zamienia konto w nagrobek. Sam wpis zostaje w pliku do czasu przedawnienia.
+    mutating func markDeleted(at date: Date = Date()) {
+        deletedAt = date
+        updatedAt = date
     }
 }
 
