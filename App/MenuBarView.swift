@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Główny panel (okno z paska menu)
+// MARK: - Main panel (the menu bar window)
 
 struct MenuBarView: View {
     @Environment(AccountStore.self) private var store
@@ -22,13 +22,13 @@ struct MenuBarView: View {
             footer
         }
         .frame(width: 320, height: 450)
-        // Stan pozycji logowania czytamy przy każdym otwarciu panelu, a nie raz
-        // przy tworzeniu widoku — użytkownik mógł ją w międzyczasie wyłączyć
+        // The login item state is read every time the panel opens, not once when
+        // the view is created — the user may have disabled it in the meantime
         // w Ustawieniach systemowych.
         .onAppear { launchAtLogin = LaunchAtLogin.isEnabled }
     }
 
-    // MARK: Nagłówek
+    // MARK: Header
 
     private var header: some View {
         HStack {
@@ -79,22 +79,22 @@ struct MenuBarView: View {
         .padding(12)
     }
 
-    /// Wersja z bundla zamiast literału — numer w interfejsie ma się zgadzać
-    /// z tym, co faktycznie zostało zbudowane (P2-05).
+    /// The version comes from the bundle rather than a literal — the number in the
+    /// interface has to match what was actually built (P2-05).
     private static var appVersion: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         return "v" + (short ?? "?")
     }
 
-    // MARK: Treść
+    // MARK: Content
 
     @ViewBuilder
     private var content: some View {
         @Bindable var store = store
         if !store.canEdit && store.accounts.isEmpty {
-            // Zanim wiadomo, co leży w chmurze, nie wolno pokazać „Brak kont” —
-            // to właśnie ten widok skłaniał do dodania konta i nadpisania
-            // pliku pustką (P1-01).
+            // Until the cloud state is known, "no accounts" must not be shown —
+            // that view is exactly what invited adding an account and overwriting
+            // the file with emptiness (P1-01).
             waitingForCloud
         } else if store.accounts.isEmpty {
             emptyState
@@ -120,7 +120,8 @@ struct MenuBarView: View {
             Text(downloading ? "Pobieram dane z iCloud…" : "Sprawdzam iCloud…")
                 .foregroundStyle(.secondary)
             if downloading {
-                Text("Konta są w chmurze, ale nie ma ich jeszcze na tym Macu. Do tego czasu nic nie zapisujemy, żeby ich nie nadpisać.")
+                Text(loc.t("Konta są w chmurze, ale nie ma ich jeszcze na tym Macu. Do tego czasu nic nie zapisujemy, żeby ich nie nadpisać.",
+                           "The accounts are in the cloud but have not reached this Mac yet. Nothing is saved until they do, so they cannot be overwritten."))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -131,8 +132,8 @@ struct MenuBarView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Pobieranie się przeciąga. Wyjście w tryb lokalny musi być świadomym
-    /// wyborem, a nie czymś, w co się wpada po cichu — stąd osobny przycisk.
+    /// The download is dragging on. Falling back to local work has to be a
+    /// deliberate choice rather than something one slides into — hence its own button.
     private var stalledBanner: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -141,7 +142,8 @@ struct MenuBarView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("iCloud nie oddaje pliku z kontami")
                     .font(.caption.weight(.semibold))
-                Text("Możesz pracować na tym, co jest na tym Macu. Zmiany trafią do chmury dopiero, gdy plik się pobierze.")
+                Text(loc.t("Możesz pracować na tym, co jest na tym Macu. Zmiany trafią do chmury dopiero, gdy plik się pobierze.",
+                           "You can work with what is on this Mac. Changes reach the cloud once the file arrives."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -166,7 +168,7 @@ struct MenuBarView: View {
                 .accessibilityHidden(true)
             Text("Brak kont")
                 .foregroundStyle(.secondary)
-            Text("Dodaj pierwsze konto, aby śledzić reset tokenów.")
+            Text(loc.t("Dodaj pierwsze konto, aby śledzić reset tokenów.", "Add your first account to track when tokens reset."))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -181,9 +183,9 @@ struct MenuBarView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                // Własne wiązanie zamiast `onChange`: zmiana idzie przez jedną
-                // ścieżkę, więc korekta po nieudanej rejestracji nie wywołuje
-                // się sama ponownie.
+                // A custom binding rather than `onChange`: the change travels one
+                // path, so correcting the toggle after a failed registration does
+                // not trigger itself again.
                 Toggle("Uruchom przy starcie", isOn: Binding(
                     get: { launchAtLogin },
                     set: { setLaunchAtLogin($0) }
@@ -191,7 +193,7 @@ struct MenuBarView: View {
                 .toggleStyle(.checkbox)
                 .font(.caption)
                 Spacer()
-                Button("Zakończ") {
+                Button(loc.t("Zakończ", "Quit")) {
                     NSApp.terminate(nil)
                 }
                 .buttonStyle(.borderless)
@@ -213,21 +215,21 @@ struct MenuBarView: View {
             case .enabled, .disabled:
                 launchNote = nil
             case .requiresApproval:
-                launchNote = "Pozycja czeka na zgodę: Ustawienia systemowe → Ogólne → Elementy logowania."
+                launchNote = loc.t("Pozycja czeka na zgodę: Ustawienia systemowe → Ogólne → Elementy logowania.",
+                               "Waiting for approval: System Settings → General → Login Items.")
             }
         } catch {
             launchNote = LaunchAtLogin.advice(for: error)
         }
-        // Cokolwiek się stało, przełącznik pokazuje stan faktyczny, nie życzenie.
+        // Whatever happened, the toggle shows what is true, not what was wished for.
         launchAtLogin = LaunchAtLogin.isEnabled
     }
 }
 
-// MARK: - Wskaźnik synchronizacji
+// MARK: - Sync indicator
 
-/// Mały znacznik przy nazwie aplikacji. Bez niego nieudana synchronizacja
-/// wyglądała dokładnie tak samo jak udana i Maki mogły się rozjeżdżać
-/// tygodniami niezauważone (P2-08).
+/// A small marker next to the app name. Without it a failed sync looked exactly
+/// like a successful one, and Macs could drift apart unnoticed for weeks (P2-08).
 private struct SyncBadge: View {
     let state: AccountStore.SyncState
 
@@ -270,9 +272,9 @@ private struct SyncBadge: View {
         case .failed(let reason):
             return reason
         case .localOnly:
-            return "iCloud Drive niedostępny — dane tylko na tym Macu"
+            return loc.t("iCloud Drive niedostępny — dane tylko na tym Macu", "iCloud Drive unavailable — data stays on this Mac")
         case .detached:
-            return "Praca lokalna — dane z iCloud nie zostały pobrane"
+            return loc.t("Praca lokalna — dane z iCloud nie zostały pobrane", "Working locally — iCloud data has not arrived")
         }
     }
 }

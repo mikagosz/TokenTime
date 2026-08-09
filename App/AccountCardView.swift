@@ -12,8 +12,8 @@ struct AccountCardView: View {
     @FocusState private var nameFocused: Bool
 
     var body: some View {
-        // Cała karta odświeżana natywnie co sekundę — pozwala też przejść
-        // w stan „gotowe” dokładnie w chwili osiągnięcia resetu.
+        // The whole card refreshes natively once a second — which also lets it
+        // flip to "done" exactly when the reset moment arrives.
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let status = account.status(now: context.date)
             VStack(alignment: .leading, spacing: 6) {
@@ -43,14 +43,14 @@ struct AccountCardView: View {
             }
         }
         .confirmationDialog(
-            "Usunąć konto „\(account.name)”?",
+            loc.t("Usunąć konto „\(account.name)”?", "Delete the account “\(account.name)”?"),
             isPresented: $confirmingDelete,
             titleVisibility: .visible
         ) {
-            Button("Usuń konto", role: .destructive) { store.remove(id: account.id) }
+            Button(loc.t("Usuń konto", "Delete account"), role: .destructive) { store.remove(id: account.id) }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Tej operacji nie można cofnąć.")
+            Text(loc.t("Tej operacji nie można cofnąć.", "This cannot be undone."))
         }
     }
 
@@ -77,8 +77,8 @@ struct AccountCardView: View {
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
-                .help("Zmień nazwę")
-                .accessibilityLabel("Zmień nazwę konta \(account.name)")
+                .help(loc.t("Zmień nazwę", "Rename"))
+                .accessibilityLabel(loc.t("Zmień nazwę konta \(account.name)", "Rename account \(account.name)"))
             }
             Spacer()
             computerToggles
@@ -100,8 +100,8 @@ struct AccountCardView: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
-            .help("Usuń konto")
-            .accessibilityLabel("Usuń konto \(account.name)")
+            .help(loc.t("Usuń konto", "Delete account"))
+            .accessibilityLabel(loc.t("Usuń konto \(account.name)", "Delete account \(account.name)"))
         }
     }
 
@@ -110,10 +110,10 @@ struct AccountCardView: View {
         nameFocused = true
     }
 
-    // MARK: Komputery (na którym profil jest zalogowany)
+    // MARK: Macs (where this profile is signed in)
 
-    /// Checkboxy z ikonami komputerów, od lewej do prawej, przy przycisku
-    /// anulowania odliczania. Przełączanie nie wpływa na zegar — zmienia
+    /// Checkboxes with Mac icons, left to right, next to the button that cancels
+    /// the countdown. Toggling does not affect the clock — it changes
     /// tylko `account.computers`.
     @ViewBuilder
     private var computerToggles: some View {
@@ -171,7 +171,7 @@ struct AccountCardView: View {
                 progressBar(now: now, reset: reset, status: status)
             }
         } else if account.resetDate != nil {
-            // Stan „gotowe” — czeka na kliknięcie Reset
+            // The "done" state — waiting for a click on Reset
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                 Text("Gotowe — kliknij Reset")
@@ -193,8 +193,8 @@ struct AccountCardView: View {
         }
     }
 
-    /// Pasek postępu z godziną resetu wyśrodkowaną bezpośrednio na nim.
-    /// Biały tekst z cieniem — czytelny nad wypełnioną i pustą częścią paska.
+    /// A progress bar with the reset time centred directly on it.
+    /// White text with a shadow — readable over both the filled and empty parts.
     private func progressBar(now: Date, reset: Date, status: ResetStatus) -> some View {
         let fraction = account.progress(now: now)
         return GeometryReader { geo in
@@ -224,12 +224,12 @@ struct AccountCardView: View {
         .controlSize(.small)
     }
 
-    /// Czyści licznik i od razu otwiera pole na nowy czas.
+    /// Clears the countdown and immediately opens the field for a new duration.
     ///
-    /// Wyczyszczenie `resetDate` przebudowuje kartę (znika zielony przycisk,
-    /// zmienia się jej wysokość). Otwarcie popovera w tym samym cyklu układu
-    /// potrafiło wywalać AppKit („gotowe → Reset” zamykało apkę). Prezentację
-    /// popovera odkładamy więc na kolejny obrót pętli, gdy układ się ustali.
+    /// Clearing `resetDate` rebuilds the card (the green button goes, the height
+    /// changes). Opening the popover in that same layout pass could crash AppKit
+    /// ("done → Reset" quit the app), so presenting it is deferred to the next turn
+    /// of the run loop, once the layout has settled.
     private func resetAndEnterNew() {
         account.resetDate = nil
         Task { @MainActor in
@@ -279,7 +279,7 @@ private struct DurationEntry: View {
             Text("→ reset o \(preview(parsed))")
                 .foregroundStyle(.green)
         } else {
-            Text("Nieprawidłowy format")
+            Text(loc.t("Nieprawidłowy format", "Invalid format"))
                 .foregroundStyle(.red)
         }
     }
@@ -302,7 +302,7 @@ private struct DurationEntry: View {
 
 enum DurationParser {
     /// Parsuje format zegarowy "H:MM", np. "3:30", "2:45", "0:30".
-    /// Samo "3" (bez dwukropka) = 3 godziny. Zwraca nil dla błędnego formatu.
+    /// A bare "3" (no colon) means 3 hours. Returns nil for a malformed value.
     static func parse(_ input: String) -> TimeInterval? {
         let text = input.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return nil }

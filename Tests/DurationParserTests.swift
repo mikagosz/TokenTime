@@ -2,18 +2,18 @@ import Foundation
 import Testing
 @testable import TokenTime
 
-/// Oczekiwany wynik jako `TimeInterval`. Bez jawnego typu literały wychodzą
-/// całkowite, a porównanie `TimeInterval?` z `Int` przechodzi przez `AnyHashable`
-/// i jest fałszywe niezależnie od wartości.
+/// The expected result as a `TimeInterval`. Without an explicit type the literals
+/// come out as integers, and comparing `TimeInterval?` with `Int` goes through
+/// `AnyHashable` and is false whatever the values are.
 private func hm(_ hours: Int, _ minutes: Int = 0) -> TimeInterval {
     TimeInterval(hours) * 3600 + TimeInterval(minutes) * 60
 }
 
 // MARK: - Parser czasu trwania
 //
-// Parser przyjmuje wyłącznie „H:MM” oraz samą liczbę godzin. Warunki brzegowe są
-// nieoczywiste (`3:` odrzucone, `3:5` przyjęte jako 3h05m, zero odrzucone),
-// więc to one są tu głównym przedmiotem testów.
+// The parser accepts only "H:MM" and a bare hour count. The edge cases are the
+// unobvious part (`3:` rejected, `3:5` read as 3 h 05 m, zero rejected), so they
+// are what these tests are mostly about.
 
 @Suite("DurationParser")
 struct DurationParserTests {
@@ -32,13 +32,13 @@ struct DurationParserTests {
         #expect(DurationParser.parse("1") == hm(1))
     }
 
-    @Test("Jedna cyfra minut czyta się jako dziesiątki")
+    @Test("A single minute digit reads as tens")
     func singleDigitMinutes() {
         // „3:5” to 3h05m, nie 3h50m — nieoczywiste, ale takie jest zachowanie.
         #expect(DurationParser.parse("3:5") == hm(3, 5))
     }
 
-    @Test("Białe znaki wokół nie przeszkadzają")
+    @Test("Surrounding whitespace is ignored")
     func trimsWhitespace() {
         #expect(DurationParser.parse("  3:30  ") == hm(3, 30))
     }
@@ -50,19 +50,19 @@ struct DurationParserTests {
         #expect(DurationParser.parse("0:0") == nil)
     }
 
-    @Test("Niekompletny i przeładowany zapis jest odrzucany", arguments: [
+    @Test("Incomplete and overloaded input is rejected", arguments: [
         "", "   ", "3:", ":30", "3:60", "3:99", "3:005", "1:2:3", "-1:30", "3,30", "abc",
     ])
     func rejectsMalformed(input: String) {
         #expect(DurationParser.parse(input) == nil)
     }
 
-    @Test("Formaty, których README kiedyś obiecywał, nadal nie są przyjmowane", arguments: [
+    @Test("Formats the README once promised are still not accepted", arguments: [
         "4h", "1h30m", "90m", "45s",
     ])
     func rejectsSuffixFormats(input: String) {
-        // Dokumentacja obiecywała te zapisy, parser ich nigdy nie znał (P2-04).
-        // Test pilnuje, żeby README i implementacja nie rozjechały się ponownie.
+        // The documentation promised these, the parser never knew them (P2-04).
+        // This test keeps the README and the implementation from drifting again.
         #expect(DurationParser.parse(input) == nil)
     }
 }

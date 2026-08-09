@@ -2,11 +2,11 @@ import Foundation
 import Testing
 @testable import TokenTime
 
-// MARK: - Czyste funkcje składnicy
+// MARK: - The store's pure functions
 //
-// Testujemy wyłącznie statyczne, czyste operacje. `AccountStore` celowo nie jest
-// tu tworzony: pakiet testowy działa w procesie aplikacji, więc żywa składnica
-// czytałaby i zapisywała prawdziwe konta użytkownika — w `UserDefaults`
+// Only the static, pure operations are tested. `AccountStore` is deliberately not
+// created here: the test bundle runs inside the app's process, so a live store
+// would read and write the user's real accounts — in `UserDefaults`
 // i w iCloud Drive.
 
 private let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
@@ -33,24 +33,24 @@ struct MenuBarInfoTests {
         #expect(info.status == .idle)
     }
 
-    @Test("Konta bez licznika i po resecie nie liczą się jako aktywne")
+    @Test("Accounts with no countdown, and those past their reset, do not count as active")
     func ignoresIdleAndFinished() {
         let accounts = [
             account("bez licznika"),
             account("po resecie", resetIn: -60),
-            account("dokładnie teraz", resetIn: 0),
+            account("exactly now", resetIn: 0),
         ]
         let info = AccountStore.menuBarInfo(for: accounts, now: now)
         #expect(info.text == nil)
         #expect(info.status == .idle)
     }
 
-    @Test("Wybierane jest konto z najkrótszym czasem")
+    @Test("The account with the shortest time left is chosen")
     func picksSoonest() {
         let accounts = [
             account("daleko", resetIn: 5 * 3600),
             account("blisko", resetIn: 90 * 60),
-            account("średnio", resetIn: 3 * 3600),
+            account("middling", resetIn: 3 * 3600),
         ]
         let info = AccountStore.menuBarInfo(for: accounts, now: now)
         #expect(info.text == "1h 30m")
@@ -69,23 +69,23 @@ struct MenuBarInfoTests {
     }
 }
 
-@Suite("Skrócone odliczanie")
+@Suite("Compact countdown")
 struct ShortCountdownTests {
 
-    @Test("Powyżej godziny — godziny i minuty")
+    @Test("Over an hour — hours and minutes")
     func hoursAndMinutes() {
         #expect(AccountStore.shortCountdown(3661) == "1h 1m")
         #expect(AccountStore.shortCountdown(7200) == "2h 0m")
         #expect(AccountStore.shortCountdown(3600) == "1h 0m")
     }
 
-    @Test("Poniżej godziny — same minuty")
+    @Test("Under an hour — minutes only")
     func minutesOnly() {
         #expect(AccountStore.shortCountdown(3599) == "59m")
         #expect(AccountStore.shortCountdown(60) == "1m")
     }
 
-    @Test("Poniżej minuty — sekundy")
+    @Test("Under a minute — seconds")
     func secondsOnly() {
         #expect(AccountStore.shortCountdown(59) == "59s")
         #expect(AccountStore.shortCountdown(0) == "0s")
@@ -94,7 +94,7 @@ struct ShortCountdownTests {
 
 // MARK: Scalanie per konto
 
-@Suite("Scalanie zmian między Makami")
+@Suite("Merging changes between Macs")
 struct MergeTests {
     private let older = now.addingTimeInterval(-3600)
     private let newer = now.addingTimeInterval(3600)
@@ -107,14 +107,14 @@ struct MergeTests {
         #expect(merged.map(\.name) == ["moje", "cudze"])
     }
 
-    @Test("Konto znane tylko lokalnie przeżywa scalenie")
+    @Test("An account known only locally survives the merge")
     func keepsLocalOnly() {
-        let mine = account("świeżo dodane")
+        let mine = account("just added")
         let merged = AccountStore.merge(local: [mine], remote: [])
-        #expect(merged.map(\.name) == ["świeżo dodane"])
+        #expect(merged.map(\.name) == ["just added"])
     }
 
-    @Test("Nowsza zmiana wygrywa, niezależnie od strony")
+    @Test("The newer change wins, whichever side it is on")
     func newerWins() {
         let id = UUID()
 
@@ -131,21 +131,22 @@ struct MergeTests {
         #expect(remoteNewer.map(\.name) == ["zdalne"])
     }
 
-    @Test("Przy równym znaczniku wygrywa plik")
+    @Test("On an equal stamp the file wins")
     func tieGoesToFile() {
-        // Konto, którego na tym Macu nie tknięto, nie ma powodu mieć nowszego
-        // znacznika. Remis oznacza więc „nie zmieniałem tego", nie „mam rację".
+        // An account untouched on this Mac has no reason to carry a newer stamp.
+        // A tie therefore means "I did not change this", not "I am right".
         let id = UUID()
         let merged = AccountStore.merge(
-            local: [account("lokalne", updatedAt: now, id: id)],
-            remote: [account("zdalne", updatedAt: now, id: id)]
+            local: [account("local", updatedAt: now, id: id)],
+            remote: [account("remote", updatedAt: now, id: id)]
         )
-        #expect(merged.map(\.name) == ["zdalne"])
+        #expect(merged.map(\.name) == ["remote"])
     }
 
-    @Test("Dwa Maki zmieniające różne konta nie kasują sobie zmian")
+    @Test("Two Macs changing different accounts do not erase each other")
     func independentEditsBothSurvive() {
-        // Dokładnie ten scenariusz gubił zmianę przy podmianie całej tablicy (P2-03).
+        // This is exactly the scenario that lost a change when the whole array was
+        // replaced (P2-03).
         let a = UUID(), b = UUID()
         let local = [
             account("A po mojej zmianie", updatedAt: newer, id: a),
@@ -159,24 +160,24 @@ struct MergeTests {
         #expect(merged.map(\.name) == ["A po mojej zmianie", "B po ich zmianie"])
     }
 
-    @Test("Nagrobek zabiera konto, którego drugi Mac jeszcze nie usunął")
+    @Test("A tombstone removes an account the other Mac has not deleted yet")
     func tombstoneRemovesAccount() {
         let id = UUID()
-        var deleted = account("usunięte", updatedAt: older, id: id)
+        var deleted = account("deleted", updatedAt: older, id: id)
         deleted.markDeleted(at: newer)
 
         let merged = AccountStore.merge(
-            local: [account("usunięte", updatedAt: older, id: id)],
+            local: [account("deleted", updatedAt: older, id: id)],
             remote: [deleted]
         )
         #expect(merged.count == 1)
         #expect(merged[0].isDeleted)
     }
 
-    @Test("Konto zmienione po usunięciu wraca do żywych")
+    @Test("An account edited after deletion comes back to life")
     func laterEditBeatsTombstone() {
         let id = UUID()
-        var deleted = account("usunięte", updatedAt: older, id: id)
+        var deleted = account("deleted", updatedAt: older, id: id)
         deleted.markDeleted(at: older)
 
         let merged = AccountStore.merge(
@@ -187,7 +188,7 @@ struct MergeTests {
         #expect(merged[0].isDeleted == false)
     }
 
-    @Test("Kolejność bierze się z listy lokalnej, nowe konta idą na koniec")
+    @Test("Order comes from the local list, new accounts go last")
     func preservesLocalOrder() {
         let a = account("pierwsze"), b = account("drugie"), c = account("z pliku")
         let merged = AccountStore.merge(local: [a, b], remote: [c, b, a])
@@ -195,47 +196,47 @@ struct MergeTests {
     }
 }
 
-@Suite("Przedawnianie nagrobków")
+@Suite("Tombstone expiry")
 struct PruneTests {
 
-    @Test("Żywe konta nigdy nie znikają")
+    @Test("Live accounts never disappear")
     func keepsLiveAccounts() {
-        let entries = [account("żywe")]
+        let entries = [account("live")]
         #expect(AccountStore.prune(entries, now: now.addingTimeInterval(10 * 365 * 86_400)).count == 1)
     }
 
-    @Test("Świeży nagrobek zostaje, przedawniony znika")
+    @Test("A fresh tombstone stays, an expired one goes")
     func dropsOnlyExpiredTombstones() {
-        var fresh = account("świeżo usunięte")
+        var fresh = account("just deleted")
         fresh.markDeleted(at: now.addingTimeInterval(-86_400))
-        var old = account("dawno usunięte")
+        var old = account("long deleted")
         old.markDeleted(at: now.addingTimeInterval(-40 * 86_400))
 
         let pruned = AccountStore.prune([fresh, old], now: now)
-        #expect(pruned.map(\.name) == ["świeżo usunięte"])
+        #expect(pruned.map(\.name) == ["just deleted"])
     }
 }
 
-@Suite("Wykrywanie różnic wobec pliku")
+@Suite("Detecting differences from the file")
 struct DiffersTests {
 
-    @Test("Sama kolejność to nie różnica")
+    @Test("Order alone is not a difference")
     func orderAloneIsNotADifference() {
-        // Inaczej dwa Maki o różnym ułożeniu kart odsyłałyby sobie ten sam plik
-        // w kółko co siedem sekund.
+        // Otherwise two Macs with different card arrangements would bounce the same
+        // file at each other every seven seconds.
         let a = account("A"), b = account("B")
         #expect(AccountStore.differs([a, b], from: [b, a]) == false)
     }
 
-    @Test("Zmieniona treść, nowe i zniknięte konto to różnice")
+    @Test("Changed content, a new account and a vanished one are differences")
     func contentDifferences() {
         let id = UUID()
-        let mine = account("po zmianie", updatedAt: now, id: id)
-        let theirs = account("przed zmianą", updatedAt: now.addingTimeInterval(-60), id: id)
+        let mine = account("after the change", updatedAt: now, id: id)
+        let theirs = account("before the change", updatedAt: now.addingTimeInterval(-60), id: id)
 
         #expect(AccountStore.differs([mine], from: [theirs]))
-        #expect(AccountStore.differs([mine, account("nowe")], from: [mine]))
-        #expect(AccountStore.differs([mine], from: [mine, account("do usunięcia")]))
+        #expect(AccountStore.differs([mine, account("new")], from: [mine]))
+        #expect(AccountStore.differs([mine], from: [mine, account("to delete")]))
         #expect(AccountStore.differs([mine], from: [mine]) == false)
     }
 }

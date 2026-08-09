@@ -1,27 +1,29 @@
 import Foundation
 
-// MARK: - Dostęp do pliku kont w iCloud Drive
+// MARK: - Access to the accounts file in iCloud Drive
 
-/// Cała praca na `accounts.json`: rozpoznanie stanu, odczyt, zapis, żądanie pobrania.
+/// All work on `accounts.json`: sensing its state, reading, writing, requesting a download.
 ///
-/// Każdy odczyt i zapis idzie przez `NSFileCoordinator`, bo plik podmienia nam pod
-/// ręką demon iCloud. Nieskoordynowany `Data(contentsOf:)` potrafi trafić w połowę
-/// podmiany i zwrócić urwaną treść, której dekodowanie się nie powiedzie (P2-02).
+/// Every read and write goes through `NSFileCoordinator`, because the iCloud daemon
+/// swaps the file under our hands. An uncoordinated `Data(contentsOf:)` can land
+/// mid-swap and return truncated content that then fails to decode (P2-02).
 ///
-/// Typ jest bezstanowy i `Sendable`, a wszystkie metody są synchroniczne i blokujące —
-/// koordynacja potrafi czekać sekundami, więc strona wołająca odsuwa je poza główny
-/// wątek. Jedyny wyjątek to zamykanie aplikacji, gdzie nie ma już na co czekać.
+/// The type is stateless and `Sendable`, and every method is synchronous and
+/// blocking — coordination can wait for seconds, so the caller moves them off the
+/// main thread. The one exception is app termination, where there is nothing left
+/// to wait for.
 ///
-/// `nonisolated`, bo projekt domyślnie izoluje wszystko do `@MainActor`
-/// (`SWIFT_DEFAULT_ACTOR_ISOLATION`), a to jedyny typ, który ma się wykonywać obok.
+/// `nonisolated`, because the project isolates everything to `@MainActor` by default
+/// (`SWIFT_DEFAULT_ACTOR_ISOLATION`) and this is the one type meant to run beside it.
 nonisolated struct AccountsFile: Sendable {
-    /// Co da się dziś powiedzieć o pliku. Kluczowe jest odróżnienie `missing`
-    /// od `notDownloaded` — mylenie ich prowadziło do nadpisania chmury pustką (P1-01).
+    /// What can be said about the file right now. Telling `missing` from
+    /// `notDownloaded` is the crucial part — confusing them overwrote the cloud with
+    /// emptiness (P1-01).
     enum Availability: Sendable, Equatable {
-        case present          // plik jest na dysku, da się go czytać
+        case present          // the file is on disk and can be read
         case notDownloaded    // plik istnieje w chmurze, ale nie na tym Macu
         case missing          // pliku nie ma nigdzie — pierwsze uruchomienie
-        case cloudUnavailable // iCloud Drive nie jest włączony na tym Macu
+        case cloudUnavailable // iCloud Drive is not enabled on this Mac
     }
 
     struct Snapshot: Sendable {
@@ -31,8 +33,8 @@ nonisolated struct AccountsFile: Sendable {
 
     let url: URL
 
-    /// Domyślne położenie: katalog iCloud Drive dostępny bez entitlements —
-    /// system synchronizuje go tak samo jak resztę Dokumentów w iCloud.
+    /// Default location: an iCloud Drive folder reachable without entitlements —
+    /// the system syncs it like the rest of Documents in iCloud.
     static var defaultURL: URL {
         cloudDocumentsURL
             .appendingPathComponent("TokenTime", isDirectory: true)
@@ -46,7 +48,7 @@ nonisolated struct AccountsFile: Sendable {
 
     private var directory: URL { url.deletingLastPathComponent() }
 
-    /// Zastępnik, którym starszy iCloud Drive oznacza niepobraną zawartość.
+    /// The placeholder older iCloud Drive uses to mark content that is not downloaded.
     private var placeholderURL: URL {
         directory.appendingPathComponent(".\(url.lastPathComponent).icloud", isDirectory: false)
     }
@@ -56,8 +58,8 @@ nonisolated struct AccountsFile: Sendable {
     func availability() -> Availability {
         let fm = FileManager.default
 
-        // Nowszy iCloud Drive zostawia plik widocznym, tylko bez zawartości.
-        // Wtedy poznajemy stan po atrybucie, nie po istnieniu ścieżki.
+        // Newer iCloud Drive leaves the file visible but without content. Then the
+        // state is read from an attribute rather than from the path existing.
         if let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
             .ubiquitousItemDownloadingStatus {
             return status == .notDownloaded ? .notDownloaded : .present
@@ -69,12 +71,12 @@ nonisolated struct AccountsFile: Sendable {
         return .missing
     }
 
-    /// Tania sonda dla odpytywania — sam `stat`, bez koordynacji i bez czytania treści.
+    /// A cheap probe for polling — just `stat`, no coordination and no reading.
     func modificationDate() -> Date? {
         Self.modificationDate(of: url)
     }
 
-    /// Prosi system o ściągnięcie zawartości na ten Mac.
+    /// Asks the system to bring the content down to this Mac.
     func startDownload() throws {
         try FileManager.default.startDownloadingUbiquitousItem(at: url)
     }
@@ -97,12 +99,12 @@ nonisolated struct AccountsFile: Sendable {
         return try outcome.get()
     }
 
-    /// Zapisuje i zwraca datę modyfikacji **zapisanego przez nas** pliku.
+    /// Writes and returns the modification date of the file **we** wrote.
     ///
-    /// Data czytana jest jeszcze w obrębie koordynacji: gdyby wyjść poza nią,
-    /// zapis z drugiego Maka mógłby wcisnąć się między `write` a odczyt atrybutów
-    /// i zapamiętalibyśmy cudzą datę jako własną — jego zmiana nigdy by się
-    /// wtedy nie wczytała (P3-03).
+    /// The date is read while still inside the coordination: outside it, a write
+    /// from another Mac could slip between `write` and reading the attributes, and we
+    /// would remember someone else's date as our own — their change would then never
+    /// be loaded (P3-03).
     @discardableResult
     func write(_ data: Data) throws -> Date? {
         try createDirectoryIfNeeded()
@@ -134,12 +136,12 @@ nonisolated struct AccountsFile: Sendable {
         hideDirectory()
     }
 
-    /// Ustawia katalogowi flagę „hidden”, żeby nie zaśmiecał widoku w Finderze.
-    /// Nazwa i synchronizacja iCloud pozostają bez zmian — w przeciwieństwie do
-    /// nazwy z kropką, której iCloud Drive w ogóle by nie synchronizował.
+    /// Marks the folder hidden so it does not clutter Finder. The name and iCloud
+    /// syncing stay as they are — unlike a dot-prefixed name, which iCloud Drive
+    /// would not sync at all.
     ///
-    /// Wołane przy tworzeniu katalogu i raz przy starcie aplikacji (katalog mógł
-    /// przyjechać z innego Maka bez flagi), a nie przy każdym zapisie (P3-04).
+    /// Called when the folder is created and once at app start (it may have arrived
+    /// from another Mac without the flag), not on every save (P3-04).
     func hideDirectoryIfNeeded() {
         let fm = FileManager.default
         guard fm.fileExists(atPath: directory.path) else { return }

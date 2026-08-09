@@ -2,8 +2,8 @@ import SwiftUI
 
 // MARK: - Etykieta w pasku menu
 
-/// Pokazuje ikonę + najkrótszy aktywny countdown. Odświeżana lekkim taskiem,
-/// bo `Text(timerInterval:)` nie działa w etykiecie `MenuBarExtra`.
+/// Shows the icon plus the shortest active countdown. Refreshed by a light task,
+/// because `Text(timerInterval:)` does not work in a `MenuBarExtra` label.
 struct MenuBarLabel: View {
     let store: AccountStore
     @State private var now = Date()

@@ -19,7 +19,7 @@ struct TokenTimeApp: App {
     }
 }
 
-/// Ukrywa ikonę w Docku — aplikacja żyje tylko w pasku menu.
+/// Hides the Dock icon — the app lives in the menu bar only.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
