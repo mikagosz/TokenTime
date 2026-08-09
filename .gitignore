@@ -8,7 +8,7 @@
 *.mobileprovision
 *.provisionprofile
 
-# Xcode — stan użytkownika
+# Xcode — per-user state
 xcuserdata/
 *.xcuserstate
 *.xcscmblueprint
@@ -25,3 +25,8 @@ DerivedData/
 # Swift Package Manager
 .build/
 .swiftpm/
+
+# Installer build material (licence text, ReadMe, installer wizard screens).
+# The author's working files — not part of the code and not for a public
+# repository. The pattern covers future installers of other programs too.
+* - instalator/
