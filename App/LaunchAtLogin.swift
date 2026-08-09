@@ -3,15 +3,14 @@ import os
 
 // MARK: - Uruchamianie przy logowaniu (macOS 13+)
 
-/// Rejestracja pozycji logowania, która nie udaje, że się udała.
+/// Login item registration that does not pretend to have worked.
 ///
-/// Wcześniej nieudany `register()` szedł do `print()` i przełącznik zostawał
-/// zaznaczony — użytkownik dowiadywał się o tym dopiero po restarcie, którego
-/// nic z niczym nie łączyło (P1-02).
+/// A failed `register()` used to go to `print()` while the toggle stayed on — the
+/// user found out only after a restart, which nothing connected to anything (P1-02).
 enum LaunchAtLogin {
 
-    /// Jak skończyła się próba zmiany. `requiresApproval` to nie porażka, ale
-    /// i nie sukces: pozycja jest zarejestrowana, tylko czeka na zgodę w
+    /// How the attempt ended. `requiresApproval` is not a failure, but not a
+    /// success either: the item is registered and waiting for approval in
     /// Ustawieniach systemowych. Bez niej aplikacja i tak nie wstanie.
     enum Outcome: Equatable {
         case enabled
@@ -23,8 +22,8 @@ enum LaunchAtLogin {
         SMAppService.mainApp.status == .enabled
     }
 
-    /// Zmienia ustawienie i zwraca stan faktyczny. Rzuca, gdy system odmówił —
-    /// wywołujący ma wtedy co pokazać i co cofnąć.
+    /// Changes the setting and returns what actually happened. Throws when the
+    /// system refuses — the caller then has something to show and something to undo.
     @discardableResult
     static func set(_ enabled: Bool) throws -> Outcome {
         let service = SMAppService.mainApp
@@ -36,7 +35,7 @@ enum LaunchAtLogin {
             }
         } catch {
             Log.launchAtLogin.error(
-                "Nie udało się \(enabled ? "włączyć" : "wyłączyć", privacy: .public) pozycji logowania: \(error.localizedDescription, privacy: .public)"
+                "Could not \(enabled ? "enable" : "disable", privacy: .public) the login item: \(error.localizedDescription, privacy: .public)"
             )
             throw error
         }
@@ -54,18 +53,22 @@ enum LaunchAtLogin {
         }
     }
 
-    /// Powody bywają tu działaniami do wykonania, więc warto je nazwać wprost.
+    /// These reasons are often actions to take, so they are spelled out.
     static func advice(for error: any Error) -> String {
         let code = (error as NSError).code
         switch code {
         case kSMErrorAlreadyRegistered:
-            return "System uważa, że pozycja już istnieje. Usuń TokenTime z Elementów logowania i spróbuj ponownie."
+            return loc.t("System uważa, że pozycja już istnieje. Usuń TokenTime z Elementów logowania i spróbuj ponownie.",
+                         "The system thinks the item already exists. Remove TokenTime from Login Items and try again.")
         case kSMErrorLaunchDeniedByUser:
-            return "Zablokowane w Ustawieniach systemowych → Ogólne → Elementy logowania."
+            return loc.t("Zablokowane w Ustawieniach systemowych → Ogólne → Elementy logowania.",
+                         "Blocked in System Settings → General → Login Items.")
         case kSMErrorInvalidSignature:
-            return "Podpis aplikacji nie pozwala jej na rejestrację. Przenieś TokenTime do Programów i uruchom stamtąd."
+            return loc.t("Podpis aplikacji nie pozwala jej na rejestrację. Przenieś TokenTime do Programów i uruchom stamtąd.",
+                         "The app signature does not allow registration. Move TokenTime to Applications and launch it from there.")
         default:
-            return "Nie udało się zmienić ustawienia: \(error.localizedDescription)"
+            return loc.t("Nie udało się zmienić ustawienia: \(error.localizedDescription)",
+                         "Could not change the setting: \(error.localizedDescription)")
         }
     }
 }

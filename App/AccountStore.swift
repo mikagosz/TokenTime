@@ -11,23 +11,23 @@ final class AccountStore {
 
     // MARK: Stan synchronizacji
 
-    /// Co dziś wiadomo o pliku w chmurze. Stan jest widoczny w panelu, bo
-    /// nieudana synchronizacja wyglądała wcześniej dokładnie tak samo jak udana (P2-08).
+    /// What is currently known about the file in the cloud. The state is shown in
+    /// the panel, because a failed sync used to look exactly like a successful one (P2-08).
     enum SyncState: Equatable, Sendable {
-        /// Sprawdzamy, co leży w chmurze. Zapis wstrzymany.
+        /// Working out what is in the cloud. Saving is on hold.
         case resolving
         /// Plik jest w chmurze, ale nie na tym Macu. Zapis wstrzymany — lokalna
-        /// pustka nie może zastąpić czegoś, czego jeszcze nie widzieliśmy (P1-01).
-        /// `stalled` = pobieranie trwa na tyle długo, że warto zaproponować wyjście.
+        /// emptiness must not replace something we have not seen yet (P1-01).
+        /// `stalled` = the download is taking long enough to offer a way out.
         case downloading(stalled: Bool)
-        /// Ostatnia wymiana z plikiem się udała.
+        /// The last exchange with the file succeeded.
         case synced(Date)
-        /// Ostatnia próba się nie powiodła. Praca lokalna trwa dalej.
+        /// The last attempt failed. Local work carries on.
         case failed(String)
-        /// iCloud Drive nie jest włączony na tym Macu.
+        /// iCloud Drive is not enabled on this Mac.
         case localOnly
-        /// Plik jest w chmurze i nie udało się go pobrać, a użytkownik świadomie
-        /// wybrał pracę lokalną. Do chmury nadal nie piszemy.
+        /// The file is in the cloud, could not be downloaded, and the user has
+        /// deliberately chosen to work locally. Still nothing is written to the cloud.
         case detached
     }
 
@@ -35,16 +35,16 @@ final class AccountStore {
 
     var accounts: [Account] {
         didSet {
-            // Nie zapisujemy ani wczytywania startowego, ani zmian przychodzących
-            // z innego Maka (uniknięcie pętli).
+            // Neither the initial load nor a change arriving from another Mac is
+            // saved back (that would loop).
             guard !isLoading, !isApplyingRemoteChange, accounts != oldValue else { return }
             cacheLocally()
             scheduleSave()
         }
     }
 
-    /// Komputery, które użytkownik posiada (włączane w Ustawieniach).
-    /// To one pojawiają się jako checkboxy przy każdym profilu.
+    /// The Macs the user owns (enabled in Settings).
+    /// These are the ones that appear as checkboxes on every profile.
     var enabledComputers: Set<Computer> = Set(Computer.allCases) {
         didSet {
             guard !isLoading else { return }
@@ -54,9 +54,9 @@ final class AccountStore {
 
     private(set) var syncState: SyncState = .resolving
 
-    /// Czy wolno dziś przyjmować zmiany od użytkownika. Dopóki nie wiadomo, co
-    /// jest w chmurze, panel nie pozwala nic ruszyć — pierwsza zmiana wykonana
-    /// „na ślepo” nadpisywała plik i rozsynchronizowywała pozostałe Maki.
+    /// Whether user changes may be accepted right now. Until the cloud state is
+    /// known the panel stays locked — the first change made blind used to overwrite
+    /// the file and throw the other Macs out of sync.
     var canEdit: Bool {
         switch syncState {
         case .resolving, .downloading: return false
@@ -64,7 +64,7 @@ final class AccountStore {
         }
     }
 
-    /// Czy wolno pisać do pliku w chmurze.
+    /// Whether writing to the cloud file is allowed.
     private var canWriteToCloud: Bool {
         switch syncState {
         case .synced, .failed, .localOnly: return true
@@ -77,39 +77,40 @@ final class AccountStore {
     @ObservationIgnored private static let storageKey = "tokentime.accounts"
     @ObservationIgnored private static let enabledComputersKey = "tokentime.enabledComputers"
 
-    /// Po tylu dniach nagrobek po usuniętym koncie przestaje być potrzebny —
-    /// wszystkie Maki zdążyły się o usunięciu dowiedzieć.
+    /// After this many days a deleted account's tombstone is no longer needed —
+    /// every Mac has had time to learn about the deletion.
     @ObservationIgnored private static let tombstoneLifetime: TimeInterval = 30 * 24 * 3600
 
-    /// Ile czekamy na koniec pisania, zanim wyślemy plik do chmury. Bez tego
-    /// każdy znak nazwy konta był osobnym zapisem i osobnym zdarzeniem
+    /// How long to wait for typing to stop before sending the file to the cloud.
+    /// Without this, every character of an account name was its own save and its
+    /// own sync event
     /// synchronizacji (P2-01).
     @ObservationIgnored private static let saveDelay: Duration = .milliseconds(800)
 
-    /// Po tylu sekundach nieudanego pobierania panel proponuje pracę lokalną.
+    /// After this many seconds of a stuck download the panel offers local work.
     @ObservationIgnored private static let downloadPatience: TimeInterval = 20
 
     @ObservationIgnored private let file: AccountsFile?
     @ObservationIgnored private let pollInterval: Duration
 
-    // MARK: Stan wewnętrzny
+    // MARK: Internal state
 
-    /// Nagrobki po usuniętych kontach — trafiają do pliku, ale nie do interfejsu.
+    /// Tombstones of deleted accounts — they go into the file, not into the UI.
     @ObservationIgnored private var tombstones: [Account] = []
 
-    /// Trwa wczytywanie startowe — obserwatory mają milczeć.
+    /// The initial load is running — observers must stay quiet.
     ///
-    /// Wbrew intuicji `didSet` **odpala się** przy przypisaniach w `init`: makro
-    /// `@Observable` zamienia te właściwości na obliczane nad `_accounts`, więc
-    /// każde przypisanie idzie przez seter. Bez tej flagi samo uruchomienie
-    /// aplikacji zapisywało plik w iCloud Drive, choć nic się nie zmieniło.
+    /// Counter-intuitively, `didSet` **does fire** for assignments made in `init`:
+    /// the `@Observable` macro turns these properties into computed ones over
+    /// `_accounts`, so every assignment goes through the setter. Without this flag,
+    /// merely launching the app wrote the file to iCloud Drive with nothing changed.
     @ObservationIgnored private var isLoading = true
     @ObservationIgnored private var isApplyingRemoteChange = false
     @ObservationIgnored private var lastKnownModDate: Date?
     @ObservationIgnored private var downloadStartedAt: Date?
     @ObservationIgnored private var isExchanging = false
-    /// Czy jest coś, czego plik jeszcze nie widział. Trzymane osobno od `saveTask`,
-    /// bo zadanie zostaje po sobie także wtedy, gdy zapis już się udał.
+    /// Whether anything has not reached the file yet. Kept apart from `saveTask`,
+    /// because the task outlives itself even once the save has succeeded.
     @ObservationIgnored private var hasPendingSave = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
@@ -118,21 +119,21 @@ final class AccountStore {
     /// Wszystko, co idzie do pliku: konta widoczne i nagrobki.
     private var allEntries: [Account] { accounts + tombstones }
 
-    // MARK: Cykl życia
+    // MARK: Lifecycle
 
     /// - Parameters:
-    ///   - fileURL: położenie pliku kont; `nil` = praca wyłącznie lokalna (testy).
-    ///   - pollInterval: co ile sprawdzać plik pod kątem zmian z innego Maka.
-    ///   - observeTermination: czy dopisać zapis awaryjny przy zamykaniu aplikacji.
+    ///   - fileURL: where the accounts file lives; `nil` = purely local (tests).
+    ///   - pollInterval: how often to check the file for changes from another Mac.
+    ///   - observeTermination: whether to add the emergency save on app termination.
     init(fileURL: URL? = AccountsFile.defaultURL,
          pollInterval: Duration = .seconds(7),
          observeTermination: Bool = true) {
         self.file = fileURL.map { AccountsFile(url: $0) }
         self.pollInterval = pollInterval
 
-        // Lokalny cache pokazujemy od razu, żeby panel nie mrugał pustką, zanim
-        // rozstrzygnie się stan chmury. `isLoading` pilnuje, żeby samo wczytanie
-        // nie zostało wzięte za zmianę użytkownika i nie poszło do pliku.
+        // The local cache is shown at once, so the panel does not flash empty while
+        // the cloud state is being resolved. `isLoading` keeps that load from being
+        // taken for a user change and written back to the file.
         accounts = []
         let cached = Self.split(Self.decode(UserDefaults.standard.data(forKey: Self.storageKey)))
         accounts = cached.live
@@ -164,8 +165,8 @@ final class AccountStore {
         accounts.append(Account(name: "Nowe konto"))
     }
 
-    /// Usuwa konto z widoku i zostawia po nim nagrobek, żeby nie wróciło
-    /// przy najbliższym scaleniu z plikiem innego Maka.
+    /// Removes an account from view and leaves a tombstone, so it does not come
+    /// back at the next merge with another Mac's file.
     func remove(id: Account.ID) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
         var removed = accounts[index]
@@ -189,12 +190,12 @@ final class AccountStore {
         accounts[index].resetDate = nil
     }
 
-    /// Świadome wyjście z zawieszonego pobierania: pracujemy na tym, co lokalnie,
-    /// ale nadal nie dotykamy pliku w chmurze. Odpytywanie chodzi dalej, więc gdy
-    /// plik w końcu przyjedzie, zmiany zostaną scalone.
+    /// A deliberate way out of a stuck download: work with what is local, while
+    /// still not touching the cloud file. Polling carries on, so once the file does
+    /// arrive the changes are merged.
     func continueLocally() {
         guard case .downloading = syncState else { return }
-        Log.sync.notice("Użytkownik wybrał pracę lokalną mimo niepobranego pliku z iCloud")
+        Log.sync.notice("User chose local work despite the iCloud file not being downloaded")
         syncState = .detached
     }
 
@@ -204,8 +205,8 @@ final class AccountStore {
         Self.menuBarInfo(for: accounts, now: now)
     }
 
-    /// Czysta postać podsumowania do paska menu — bez dotykania stanu składnicy,
-    /// dzięki czemu da się ją przetestować bez pliku w iCloud.
+    /// A pure form of the menu bar summary — it touches no store state, so it can
+    /// be tested without an iCloud file.
     static func menuBarInfo(for accounts: [Account], now: Date) -> (text: String?, status: ResetStatus) {
         let active = accounts.compactMap { account -> (Account, TimeInterval)? in
             guard let date = account.resetDate else { return nil }
@@ -231,7 +232,7 @@ final class AccountStore {
         }
     }
 
-    // MARK: Rozstrzygnięcie stanu chmury
+    // MARK: Resolving the cloud state
 
     private func resolve() async {
         guard let file else { return }
@@ -239,24 +240,25 @@ final class AccountStore {
 
         switch await Self.offMain({ file.availability() }) {
         case .cloudUnavailable:
-            Log.sync.notice("iCloud Drive niedostępny na tym Macu — pracujemy lokalnie")
+            Log.sync.notice("iCloud Drive unavailable on this Mac — working locally")
             syncState = .localOnly
 
         case .missing:
-            // Pliku nie ma. Lokalny cache jest jedyną wersją prawdy, więc wolno go
-            // wypchnąć. Gdyby plik przyjechał później z innego Maka, scalanie per
+            // There is no file. The local cache is the only version of the truth,
+            // so it may be pushed. If a file arrives later from another Mac, merging
+            // per
             // konto i tak niczego nie zgubi.
             syncState = .synced(Date())
             if !allEntries.isEmpty { scheduleSave(immediately: true) }
 
         case .notDownloaded:
-            Log.sync.notice("Plik kont jest w chmurze, ale nie na tym Macu — żądam pobrania")
+            Log.sync.notice("The accounts file is in the cloud but not on this Mac — requesting a download")
             syncState = .downloading(stalled: false)
             downloadStartedAt = Date()
             do {
                 try await Self.offMainThrowing { try file.startDownload() }
             } catch {
-                Log.sync.error("Nie udało się zażądać pobrania: \(error.localizedDescription, privacy: .public)")
+                Log.sync.error("Could not request the download: \(error.localizedDescription, privacy: .public)")
                 syncState = .downloading(stalled: true)
             }
 
@@ -281,7 +283,7 @@ final class AccountStore {
     private func poll() async {
         guard let file, !isExchanging else { return }
 
-        // W trakcie pobierania sprawdzamy tylko, czy plik już dojechał.
+        // While downloading, the only question is whether the file has arrived.
         if case .downloading(let stalled) = syncState {
             if await Self.offMain({ file.availability() }) == .present {
                 await exchange()
@@ -293,10 +295,10 @@ final class AccountStore {
             return
         }
 
-        // Tania sonda — pełny, koordynowany odczyt tylko gdy data się zmieniła.
+        // A cheap probe — a full coordinated read only when the date has changed.
         let modDate = await Self.offMain { file.modificationDate() }
         if modDate == nil, lastKnownModDate != nil {
-            // Plik zniknął (albo iCloud go eksmitował). Rozstrzygamy stan od nowa.
+            // The file is gone (or iCloud evicted it). Resolve the state again.
             await resolve()
             return
         }
@@ -306,8 +308,8 @@ final class AccountStore {
 
     // MARK: Wymiana z plikiem
 
-    /// Czyta plik, scala go z tym, co mamy, i — jeśli scalenie wniosło coś naszego —
-    /// odsyła wynik z powrotem, żeby pozostałe Maki też go zobaczyły.
+    /// Reads the file, merges it with what we hold and — if the merge contributed
+    /// something of ours — sends the result back so the other Macs see it too.
     private func exchange() async {
         guard let file, !isExchanging else { return }
         isExchanging = true
@@ -317,8 +319,8 @@ final class AccountStore {
         do {
             snapshot = try await Self.offMainThrowing { try file.read() }
         } catch {
-            Log.sync.error("Nie udało się odczytać pliku kont: \(error.localizedDescription, privacy: .public)")
-            syncState = .failed("Nie udało się odczytać danych z iCloud.")
+            Log.sync.error("Could not read the accounts file: \(error.localizedDescription, privacy: .public)")
+            syncState = .failed(loc.t("Nie udało się odczytać danych z iCloud.", "Could not read the data from iCloud."))
             return
         }
 
@@ -334,8 +336,8 @@ final class AccountStore {
         apply(merged)
         syncState = .synced(Date())
 
-        // Scalenie wniosło coś, czego w pliku nie ma — trzeba to odesłać, inaczej
-        // nasza zmiana zginie przy następnym zapisie z drugiej strony.
+        // The merge contributed something the file lacks — it has to go back, or
+        // our change dies at the next save from the other side.
         if Self.differs(merged, from: remote) { scheduleSave(immediately: true) }
     }
 
@@ -349,11 +351,11 @@ final class AccountStore {
 
     // MARK: Scalanie
 
-    /// Scala dwie listy kont po `id`, wybierając nowszą wersję każdego z osobna.
+    /// Merges two account lists by `id`, taking the newer version of each.
     ///
-    /// Przy równych znacznikach wygrywa wersja z pliku: konto, którego na tym Macu
-    /// nie tknięto, nie ma powodu mieć nowszego znacznika niż zdalne. Kolejność
-    /// bierzemy z lokalnej listy, nowe konta z pliku dochodzą na koniec.
+    /// On equal timestamps the file wins: an account untouched on this Mac has no
+    /// reason to carry a newer stamp than the remote one. Order comes from the local
+    /// list; accounts new to us are appended at the end.
     static func merge(local: [Account], remote: [Account]) -> [Account] {
         var byID: [Account.ID: Account] = [:]
         var order: [Account.ID] = []
@@ -374,11 +376,11 @@ final class AccountStore {
         return order.compactMap { byID[$0] }
     }
 
-    /// Czy scalony wynik wnosi coś, czego w pliku nie ma.
+    /// Whether the merged result contributes anything the file does not have.
     ///
-    /// Porównanie idzie po `id`, celowo z pominięciem kolejności: każdy Mac trzyma
-    /// własne ułożenie kart, a porównywanie tablic wprost kazałoby dwóm Makom o
-    /// różnej kolejności odsyłać sobie ten sam plik w kółko co siedem sekund.
+    /// The comparison goes by `id` and deliberately ignores order: each Mac keeps
+    /// its own card arrangement, and comparing arrays directly would have two Macs
+    /// with different orders bouncing the same file at each other every seven seconds.
     static func differs(_ merged: [Account], from remote: [Account]) -> Bool {
         func byID(_ entries: [Account]) -> [Account.ID: Account] {
             Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
@@ -386,7 +388,7 @@ final class AccountStore {
         return byID(merged) != byID(remote)
     }
 
-    /// Wyrzuca nagrobki starsze niż `tombstoneLifetime`.
+    /// Drops tombstones older than `tombstoneLifetime`.
     static func prune(_ entries: [Account], now: Date) -> [Account] {
         entries.filter { entry in
             guard let deletedAt = entry.deletedAt else { return true }
@@ -396,8 +398,8 @@ final class AccountStore {
 
     // MARK: Zapis
 
-    /// Odkłada zapis do chmury o `saveDelay`, żeby seria zmian (pisanie nazwy)
-    /// zeszła jako jeden plik, a nie jako kilkanaście zdarzeń synchronizacji.
+    /// Delays the cloud save by `saveDelay`, so a burst of changes (typing a name)
+    /// leaves as one file rather than a dozen sync events.
     private func scheduleSave(immediately: Bool = false) {
         hasPendingSave = true
         saveTask?.cancel()
@@ -418,16 +420,17 @@ final class AccountStore {
             hasPendingSave = false
             syncState = .synced(Date())
         } catch {
-            Log.sync.error("Zapis do iCloud Drive nie powiódł się: \(error.localizedDescription, privacy: .public)")
-            syncState = .failed("Nie udało się zapisać do iCloud. Zmiany są bezpieczne na tym Macu.")
+            Log.sync.error("Saving to iCloud Drive failed: \(error.localizedDescription, privacy: .public)")
+            syncState = .failed(loc.t("Nie udało się zapisać do iCloud. Zmiany są bezpieczne na tym Macu.",
+                                      "Could not save to iCloud. The changes are safe on this Mac."))
         }
     }
 
     /// Zapis awaryjny przy zamykaniu aplikacji — synchronicznie, bo proces zaraz
-    /// zniknie i odłożone zadanie już się nie obudzi.
+    /// disappears and the deferred task never wakes.
     ///
-    /// Tylko gdy jest co dopisać: samo uruchomienie i zamknięcie aplikacji nie ma
-    /// powodu dotykać pliku w chmurze.
+    /// Only when there is something to write: launching and quitting the app has no
+    /// reason to touch the cloud file.
     private func flushNow() {
         guard hasPendingSave else { return }
         saveTask?.cancel()
@@ -437,12 +440,12 @@ final class AccountStore {
             lastKnownModDate = try file.write(data)
             hasPendingSave = false
         } catch {
-            Log.sync.error("Zapis przy zamykaniu nie powiódł się: \(error.localizedDescription, privacy: .public)")
+            Log.sync.error("The save on termination failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Lokalny cache trzymamy zawsze i natychmiast — jest tani, a przy nagłym
-    /// końcu procesu to on ratuje ostatnią zmianę.
+    /// The local cache is always written, immediately — it is cheap, and when the
+    /// process ends abruptly it is what saves the last change.
     private func cacheLocally() {
         guard let data = encodeEntries() else { return }
         UserDefaults.standard.set(data, forKey: Self.storageKey)
@@ -461,8 +464,8 @@ final class AccountStore {
         (entries.filter { !$0.isDeleted }, entries.filter(\.isDeleted))
     }
 
-    /// Praca na pliku poza głównym wątkiem — koordynacja potrafi czekać sekundami,
-    /// a interfejs nie ma powodu na to patrzeć.
+    /// File work off the main thread — coordination can block for seconds, and the
+    /// interface has no reason to watch it.
     private static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
         await Task.detached(priority: .utility, operation: work).value
     }
@@ -471,10 +474,10 @@ final class AccountStore {
         try await Task.detached(priority: .utility, operation: work).value
     }
 
-    // MARK: Ustawienia komputerów (lokalne — nie synchronizowane)
+    // MARK: Mac settings (local — not synchronised)
 
     private static func loadEnabledComputers() -> Set<Computer> {
-        // Brak zapisu = pierwsze uruchomienie → wszystkie komputery włączone.
+        // Nothing stored = first launch → every Mac enabled.
         guard let raw = UserDefaults.standard.array(forKey: enabledComputersKey) as? [String] else {
             return Set(Computer.allCases)
         }
@@ -490,9 +493,9 @@ final class AccountStore {
 
 /// Cel dla `NSApplication.willTerminateNotification`.
 ///
-/// Powiadomienie trzeba odebrać synchronicznie — po nim proces znika i nic
-/// asynchronicznego już się nie wykona. Osobny `NSObject` pozwala użyć wariantu
-/// z selektorem, bez zamknięcia `@Sendable`, którego składnica by nie przeszła.
+/// The notification has to be handled synchronously — the process disappears right
+/// after it and nothing asynchronous will run. A separate `NSObject` allows the
+/// selector-based variant, without a `@Sendable` closure the store could not satisfy.
 @MainActor
 private final class TerminationObserver: NSObject {
     private let onTerminate: @MainActor () -> Void

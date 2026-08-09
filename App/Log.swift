@@ -5,11 +5,11 @@ import os
 
 /// Jedno miejsce na loggery aplikacji.
 ///
-/// Wcześniej jedyna diagnostyka szła przez `print()`, a w aplikacji uruchamianej
-/// z Findera standardowe wyjście nie trafia nigdzie, gdzie ktokolwiek zajrzy.
-/// `os.Logger` widać w Konsoli także po fakcie (P2-09).
+/// Diagnostics used to go through `print()`, and for an app launched from Finder
+/// standard output goes nowhere anyone will look. `os.Logger` is visible in Console
+/// after the fact as well (P2-09).
 ///
-/// Podgląd na żywo:
+/// Live view:
 /// `log stream --predicate 'subsystem == "com.mikagosz.tokentime"' --level info`
 nonisolated enum Log {
     private static let subsystem = Bundle.main.bundleIdentifier ?? "com.mikagosz.tokentime"

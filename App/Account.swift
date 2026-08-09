@@ -1,9 +1,9 @@
 import SwiftUI
 
-// MARK: - Typy komputerów
+// MARK: - Mac kinds
 
-/// Komputery, na których dany profil może być zalogowany.
-/// Kolejność `allCases` wyznacza kolejność checkboxów od lewej do prawej.
+/// The Macs a profile can be signed in on.
+/// The order of `allCases` sets the checkbox order, left to right.
 enum Computer: String, Codable, CaseIterable, Identifiable, Hashable {
     case macMini
     case iMac
@@ -35,10 +35,10 @@ enum Computer: String, Codable, CaseIterable, Identifiable, Hashable {
 
 /// Konto wraz ze znacznikiem ostatniej zmiany.
 ///
-/// `updatedAt` jest podbijane automatycznie przy każdej realnej zmianie pola —
-/// widoki mutują konto przez `@Binding`, więc nie ma innego miejsca, w którym
-/// dałoby się to zrobić raz a dobrze. To ten znacznik pozwala scalać zmiany
-/// z dwóch Maków per konto, zamiast podmieniać całą tablicę (P2-03).
+/// `updatedAt` is bumped automatically on every real field change — views mutate
+/// the account through `@Binding`, so there is no other place where
+/// it could be done once and properly. This stamp is what allows changes from two
+/// Macs to be merged per account instead of replacing the whole array (P2-03).
 struct Account: Identifiable, Codable, Equatable, Sendable {
     var id: UUID
 
@@ -51,21 +51,21 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
         didSet { if resetDate != oldValue { updatedAt = Date() } }
     }
 
-    /// Pełne okno (do paska postępu), domyślnie 5h. Nadpisywane wpisanym czasem.
+    /// The full window (for the progress bar), 5 h by default. Overridden by a typed duration.
     var windowHours: Double {
         didSet { if windowHours != oldValue { updatedAt = Date() } }
     }
 
-    /// Komputery, na których profil jest zalogowany.
+    /// The Macs this profile is signed in on.
     var computers: Set<Computer> {
         didSet { if computers != oldValue { updatedAt = Date() } }
     }
 
-    /// Kiedy konto ostatnio zmieniono. Rozstrzyga scalanie między Makami.
+    /// When the account last changed. Decides merges between Macs.
     private(set) var updatedAt: Date
 
-    /// Nagrobek po usuniętym koncie. Trzymany w pliku, dopóki pozostałe Maki
-    /// się o usunięciu nie dowiedzą — inaczej konto wracałoby z ich kopii.
+    /// Tombstone of a deleted account. Kept in the file until the other Macs learn
+    /// about the deletion — otherwise the account would return from their copies.
     private(set) var deletedAt: Date?
 
     var isDeleted: Bool { deletedAt != nil }
@@ -86,8 +86,8 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
         self.deletedAt = deletedAt
     }
 
-    // Tolerancyjne dekodowanie — starsze pliki bez pól `windowHours`/`computers`
-    // nie mogą wywalać całego wczytywania (inaczej użytkownik straciłby konta).
+    // Tolerant decoding — older files without `windowHours`/`computers` must not
+    // break the whole load (the user would lose their accounts).
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -95,14 +95,14 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
         resetDate = try c.decodeIfPresent(Date.self, forKey: .resetDate)
         windowHours = try c.decodeIfPresent(Double.self, forKey: .windowHours) ?? 5
         computers = try c.decodeIfPresent(Set<Computer>.self, forKey: .computers) ?? []
-        // Plik zapisany przed wprowadzeniem scalania nie ma znaczników.
-        // `stampIfMissing(_:)` uzupełnia je datą modyfikacji pliku.
+        // A file written before merging existed carries no stamps.
+        // `stampIfMissing(_:)` fills them in from the file's modification date.
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
         deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
     }
 
-    /// Uzupełnia brakujący znacznik zmiany datą pliku, z którego konto pochodzi.
-    /// Bez tego wszystkie wpisy ze starego pliku miałyby `.distantPast` i przegrywały
+    /// Fills a missing change stamp from the date of the file the account came from.
+    /// Without it every entry from an old file would hold `.distantPast` and lose
     /// nawet z dawno nieruszanym kontem po drugiej stronie.
     mutating func stampIfMissing(_ date: Date) {
         if updatedAt == .distantPast { updatedAt = date }
@@ -115,13 +115,13 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - Status i wielkości pochodne
+// MARK: - Status and derived values
 
 enum ResetStatus {
     case idle    // brak aktywnego licznika
     case ok      // > 1h do resetu (licznik biegnie)
     case soon    // < 1h do resetu (licznik biegnie)
-    case done    // reset osiągnięty — gotowe, czeka na kliknięcie „Reset”
+    case done    // the reset moment arrived — done, waiting for a click on "Reset"
 
     var color: Color {
         switch self {
@@ -134,13 +134,13 @@ enum ResetStatus {
 }
 
 extension Account {
-    /// Czas pozostały do resetu (nigdy ujemny). nil = brak licznika.
+    /// Time left until the reset (never negative). nil = no countdown.
     func remaining(now: Date = Date()) -> TimeInterval? {
         guard let resetDate else { return nil }
         return max(0, resetDate.timeIntervalSince(now))
     }
 
-    /// Status konta wyliczony względem `now`.
+    /// The account's status as of `now`.
     func status(now: Date = Date()) -> ResetStatus {
         guard let resetDate else { return .idle }
         let remaining = resetDate.timeIntervalSince(now)
@@ -149,7 +149,7 @@ extension Account {
         return .ok
     }
 
-    /// Postęp okna (0 = dopiero ustawiony, 1 = reset osiągnięty).
+    /// Progress through the window (0 = just set, 1 = reset reached).
     func progress(now: Date = Date()) -> Double {
         guard let resetDate else { return 0 }
         let total = max(1, windowHours * 3600)
