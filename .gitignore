@@ -30,3 +30,11 @@ DerivedData/
 # The author's working files — not part of the code and not for a public
 # repository. The pattern covers future installers of other programs too.
 * - instalator/
+
+# The installer wizard's own project file and its artwork. They live in the repo root,
+# so the "* - instalator/" pattern above never covered them — yet the .pkgbuilder file
+# carries the absolute path of the author's home folder, and both are installer
+# material, not code. Patterns anchored to the root so nothing in Assets.xcassets
+# is caught by accident.
+/*.pkgbuilder
+/tokentimeikona.tiff

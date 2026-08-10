@@ -61,6 +61,13 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
         didSet { if computers != oldValue { updatedAt = Date() } }
     }
 
+    /// When the weekly limit resets on this account, e.g. `Sat 12 AM`. nil = not set.
+    ///
+    /// A recurring rule, not a date: it survives every reset without being re-entered.
+    var weeklyReset: WeeklyReset? {
+        didSet { if weeklyReset != oldValue { updatedAt = Date() } }
+    }
+
     /// When the account last changed. Decides merges between Macs.
     private(set) var updatedAt: Date
 
@@ -75,6 +82,7 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
          resetDate: Date? = nil,
          windowHours: Double = 5,
          computers: Set<Computer> = [],
+         weeklyReset: WeeklyReset? = nil,
          updatedAt: Date = Date(),
          deletedAt: Date? = nil) {
         self.id = id
@@ -82,6 +90,7 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
         self.resetDate = resetDate
         self.windowHours = windowHours
         self.computers = computers
+        self.weeklyReset = weeklyReset
         self.updatedAt = updatedAt
         self.deletedAt = deletedAt
     }
@@ -95,6 +104,9 @@ struct Account: Identifiable, Codable, Equatable, Sendable {
         resetDate = try c.decodeIfPresent(Date.self, forKey: .resetDate)
         windowHours = try c.decodeIfPresent(Double.self, forKey: .windowHours) ?? 5
         computers = try c.decodeIfPresent(Set<Computer>.self, forKey: .computers) ?? []
+        // Added after the first release — files written by an older TokenTime, or by
+        // a Mac that has not updated yet, simply carry no weekly reset.
+        weeklyReset = try c.decodeIfPresent(WeeklyReset.self, forKey: .weeklyReset)
         // A file written before merging existed carries no stamps.
         // `stampIfMissing(_:)` fills them in from the file's modification date.
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? .distantPast
