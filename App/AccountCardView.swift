@@ -8,6 +8,7 @@ struct AccountCardView: View {
 
     @State private var isEditingName = false
     @State private var showingEntry = false
+    @State private var showingWeeklyEntry = false
     @State private var confirmingDelete = false
     @FocusState private var nameFocused: Bool
 
@@ -19,6 +20,7 @@ struct AccountCardView: View {
             VStack(alignment: .leading, spacing: 6) {
                 nameRow
                 countdownSection(now: context.date, status: status)
+                weeklySection(now: context.date)
             }
             .padding(10)
             .background {
@@ -40,6 +42,12 @@ struct AccountCardView: View {
                 account.windowHours = interval / 3600
                 account.resetDate = Date().addingTimeInterval(interval)
                 showingEntry = false
+            }
+        }
+        .popover(isPresented: $showingWeeklyEntry, arrowEdge: .bottom) {
+            WeeklyResetEntry(current: account.weeklyReset) { weekly in
+                account.weeklyReset = weekly
+                showingWeeklyEntry = false
             }
         }
         .confirmationDialog(
@@ -166,6 +174,7 @@ struct AccountCardView: View {
                         .monospacedDigit()
                         .foregroundStyle(status.color)
                     Spacer()
+                    weeklyButton()
                     resetButton()
                 }
                 progressBar(now: now, reset: reset, status: status)
@@ -188,30 +197,69 @@ struct AccountCardView: View {
             .tint(.green)
             .controlSize(.large)
         } else {
-            // Brak licznika — bez tekstu statusu, tylko przycisk
-            resetButton()
+            // Brak licznika — bez tekstu statusu, tylko przyciski
+            HStack(spacing: 8) {
+                weeklyButton()
+                resetButton()
+            }
         }
     }
 
     /// A progress bar with the reset time centred directly on it.
     /// White text with a shadow — readable over both the filled and empty parts.
+    ///
+    /// Narrower than it used to be (18 → 12 pt): the weekly bar now sits underneath,
+    /// and two bars of the old height turned the card into a pair of stripes.
     private func progressBar(now: Date, reset: Date, status: ResetStatus) -> some View {
-        let fraction = account.progress(now: now)
-        return GeometryReader { geo in
+        bar(fraction: account.progress(now: now),
+            color: status.color,
+            caption: reset.formatted(date: .omitted, time: .shortened))
+    }
+
+    /// One bar: track, fill, and a caption centred on top of it.
+    /// Shared by the session and weekly rows so the two cannot drift apart in style.
+    private func bar(fraction: Double, color: Color, caption: String) -> some View {
+        GeometryReader { geo in
             ZStack {
                 Capsule()
                     .fill(Color.secondary.opacity(0.25))
                 Capsule()
-                    .fill(status.color)
+                    .fill(color)
                     .frame(width: max(0, geo.size.width * fraction))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(reset.formatted(date: .omitted, time: .shortened))
-                    .font(.caption.weight(.semibold))
+                Text(caption)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.6), radius: 1)
             }
         }
-        .frame(height: 18)
+        .frame(height: 12)
+    }
+
+    // MARK: Weekly limit
+
+    /// The weekly bar, in indigo — a colour the session states never use, so a glance
+    /// tells the two apart even when both are running.
+    @ViewBuilder
+    private func weeklySection(now: Date) -> some View {
+        if let weekly = account.weeklyReset {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(loc.t("Tydzień", "Weekly"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(weekly.label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.indigo)
+                    Spacer()
+                }
+                // The countdown rides on the bar itself, the way the session bar carries
+                // its reset time — one glance gives both how far along and how long left.
+                bar(fraction: weekly.progress(from: now),
+                    color: .indigo,
+                    caption: WeeklyReset.countdownText(weekly.remaining(from: now) ?? 0))
+            }
+        }
     }
 
     private func resetButton() -> some View {
@@ -222,6 +270,24 @@ struct AccountCardView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
+    }
+
+    /// Sets the weekly limit reset. Sits next to "Reset", because both buttons answer
+    /// the same question — when does this account come back — only on different clocks.
+    private func weeklyButton() -> some View {
+        Button {
+            showingWeeklyEntry = true
+        } label: {
+            Image(systemName: account.weeklyReset == nil
+                  ? "calendar.badge.plus" : "calendar.badge.clock")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .foregroundStyle(account.weeklyReset == nil ? Color.secondary : Color.indigo)
+        .help(loc.t("Reset tygodniowego limitu", "Weekly limit reset"))
+        .accessibilityLabel(
+            loc.t("Reset tygodniowego limitu konta \(account.name)",
+                  "Weekly limit reset for account \(account.name)"))
     }
 
     /// Clears the countdown and immediately opens the field for a new duration.
@@ -293,6 +359,69 @@ private struct DurationEntry: View {
     }
 
     private func commit(_ parsed: TimeInterval?) {
+        guard let parsed else { return }
+        onCommit(parsed)
+    }
+}
+
+// MARK: - Weekly reset entry (one field, Anthropic's own wording)
+
+/// Takes the reset exactly as Anthropic states it — `Sat 12 AM` — so there is nothing
+/// to convert in one's head. A picker for day + hour + AM/PM would be three controls
+/// for what the user already has on screen as one line of text.
+private struct WeeklyResetEntry: View {
+    let current: WeeklyReset?
+    let onCommit: (WeeklyReset?) -> Void
+
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let parsed = WeeklyReset.parse(text)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(loc.t("Kiedy reset tygodniowego limitu?", "When does the weekly limit reset?"))
+                .font(.headline)
+            TextField("Sat 12 AM", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .focused($focused)
+                .frame(width: 200)
+                .onSubmit { commit(parsed) }
+            hint(parsed: parsed)
+                .font(.caption)
+            HStack {
+                if current != nil {
+                    Button(loc.t("Wyczyść", "Clear")) { onCommit(nil) }
+                }
+                Spacer()
+                Button(loc.t("Ustaw", "Set")) { commit(parsed) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(parsed == nil)
+            }
+        }
+        .padding(14)
+        .onAppear {
+            text = current?.label ?? ""
+            focused = true
+        }
+    }
+
+    @ViewBuilder
+    private func hint(parsed: WeeklyReset?) -> some View {
+        if text.isEmpty {
+            Text(loc.t("Format jak w Anthropic: Sat 12 AM", "Anthropic's own format: Sat 12 AM"))
+                .foregroundStyle(.secondary)
+        } else if let parsed, let next = parsed.nextDate(after: Date()) {
+            Text(loc.t("→ najbliższy: \(next.formatted(date: .abbreviated, time: .shortened))",
+                       "→ next: \(next.formatted(date: .abbreviated, time: .shortened))"))
+                .foregroundStyle(.green)
+        } else {
+            Text(loc.t("Nieprawidłowy format", "Invalid format"))
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func commit(_ parsed: WeeklyReset?) {
         guard let parsed else { return }
         onCommit(parsed)
     }
