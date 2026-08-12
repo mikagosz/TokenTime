@@ -76,6 +76,55 @@ nonisolated struct AccountsFile: Sendable {
         Self.modificationDate(of: url)
     }
 
+    /// Whether iCloud is holding versions of this file that nobody has merged.
+    ///
+    /// This is the second cheap probe polling needs, and the reason it exists is a
+    /// month of lost changes: when two Macs replace the file without having seen
+    /// each other's version, iCloud keeps one as current and files the other as a
+    /// **conflict version**. A conflict version does not change the current file's
+    /// modification date, so a poller watching only that date never wakes up — and
+    /// the app read the current file forever while the other Mac's edits sat in
+    /// branches nobody opened. Measured 2026-08-12 on the real file: **10
+    /// unresolved branches, all from the Mac mini, from 8 July to 11 August.**
+    func hasUnresolvedConflicts() -> Bool {
+        (try? url.resourceValues(forKeys: [.ubiquitousItemHasUnresolvedConflictsKey]))?
+            .ubiquitousItemHasUnresolvedConflicts ?? false
+    }
+
+    /// Contents of every unresolved conflict version, oldest first.
+    ///
+    /// Ordered oldest first so a fold over them ends on the newest, matching how
+    /// `AccountStore.merge` breaks ties. A branch that cannot be read is skipped
+    /// rather than failing the whole exchange: one unreadable branch must not stop
+    /// the other nine from being merged.
+    func readConflicts() -> [Snapshot] {
+        guard let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) else { return [] }
+        return versions
+            .sorted { ($0.modificationDate ?? .distantPast) < ($1.modificationDate ?? .distantPast) }
+            .compactMap { version in
+                guard let data = try? Data(contentsOf: version.url) else { return nil }
+                return Snapshot(data: data, modificationDate: version.modificationDate)
+            }
+    }
+
+    /// Tells the system every conflict has been dealt with, which removes the
+    /// branches.
+    ///
+    /// Called **only after** the merged result is safely in the file: resolving
+    /// first and writing second would drop the other Mac's changes if the write
+    /// then failed. Returns how many branches were closed, so the caller can log a
+    /// number rather than "done".
+    @discardableResult
+    func resolveConflicts() -> Int {
+        guard let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) else { return 0 }
+        var closed = 0
+        for version in versions {
+            version.isResolved = true
+            closed += 1
+        }
+        return closed
+    }
+
     /// Asks the system to bring the content down to this Mac.
     func startDownload() throws {
         try FileManager.default.startDownloadingUbiquitousItem(at: url)
