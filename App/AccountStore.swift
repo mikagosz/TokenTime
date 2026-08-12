@@ -109,6 +109,9 @@ final class AccountStore {
     @ObservationIgnored private var lastKnownModDate: Date?
     @ObservationIgnored private var downloadStartedAt: Date?
     @ObservationIgnored private var isExchanging = false
+    /// Conflict branches were merged in and are waiting to be closed — only after
+    /// the merged result reaches the file, never before.
+    @ObservationIgnored private var conflictsAwaitingResolution = false
     /// Whether anything has not reached the file yet. Kept apart from `saveTask`,
     /// because the task outlives itself even once the save has succeeded.
     @ObservationIgnored private var hasPendingSave = false
@@ -302,7 +305,13 @@ final class AccountStore {
             await resolve()
             return
         }
-        guard let modDate, modDate != lastKnownModDate else { return }
+        // A conflict branch leaves the current file's date untouched, so the date
+        // alone is not enough to notice the other Mac's change — that is exactly how
+        // a month of edits from the Mac mini stayed invisible.
+        let dateChanged = modDate != nil && modDate != lastKnownModDate
+        if !dateChanged {
+            guard await Self.offMain({ file.hasUnresolvedConflicts() }) else { return }
+        }
         await exchange()
     }
 
@@ -324,11 +333,22 @@ final class AccountStore {
             return
         }
 
-        let stamp = snapshot.modificationDate ?? Date()
-        let remote = Self.decode(snapshot.data).map { entry -> Account in
-            var entry = entry
-            entry.stampIfMissing(stamp)
-            return entry
+        func entries(from snapshot: AccountsFile.Snapshot) -> [Account] {
+            let stamp = snapshot.modificationDate ?? Date()
+            return Self.decode(snapshot.data).map { entry -> Account in
+                var entry = entry
+                entry.stampIfMissing(stamp)
+                return entry
+            }
+        }
+
+        // Everything the cloud holds: the current file plus every conflict branch,
+        // folded oldest to newest. Without the branches the merge was fed an
+        // incomplete picture and the other Mac's changes could never win.
+        let branches = await Self.offMain { file.readConflicts() }
+        let remote = Self.mergeSources([entries(from: snapshot)] + branches.map(entries(from:)))
+        if !branches.isEmpty {
+            Log.sync.notice("Merging \(branches.count, privacy: .public) unresolved iCloud conflict version(s)")
         }
 
         let merged = Self.prune(Self.merge(local: allEntries, remote: remote), now: Date())
@@ -338,7 +358,25 @@ final class AccountStore {
 
         // The merge contributed something the file lacks — it has to go back, or
         // our change dies at the next save from the other side.
-        if Self.differs(merged, from: remote) { scheduleSave(immediately: true) }
+        if Self.differs(merged, from: remote) {
+            conflictsAwaitingResolution = !branches.isEmpty
+            scheduleSave(immediately: true)
+        } else if !branches.isEmpty {
+            // The branches carried nothing new (all of it is already in the file), so
+            // there is nothing to write — but they still have to be closed, or they
+            // pile up forever and every poll keeps re-reading them.
+            await closeConflicts()
+        }
+    }
+
+    /// Closes the conflict branches once their content is safely in the file.
+    private func closeConflicts() async {
+        guard let file else { return }
+        conflictsAwaitingResolution = false
+        let closed = await Self.offMain { file.resolveConflicts() }
+        if closed > 0 {
+            Log.sync.notice("Closed \(closed, privacy: .public) iCloud conflict version(s)")
+        }
     }
 
     private func apply(_ entries: [Account]) {
@@ -374,6 +412,18 @@ final class AccountStore {
         }
 
         return order.compactMap { byID[$0] }
+    }
+
+    /// Folds several versions of the file into one picture: the current file first,
+    /// then each conflict branch oldest to newest.
+    ///
+    /// Order matters only for ties, and it is deliberate: `merge` lets the later
+    /// argument win on an equal stamp, so the newest branch has the last word.
+    /// Everything else is decided per account by `updatedAt`, which is why a branch
+    /// from the other Mac can contribute one account without touching the rest.
+    static func mergeSources(_ sources: [[Account]]) -> [Account] {
+        guard let first = sources.first else { return [] }
+        return sources.dropFirst().reduce(first) { merge(local: $0, remote: $1) }
     }
 
     /// Whether the merged result contributes anything the file does not have.
@@ -419,6 +469,8 @@ final class AccountStore {
             lastKnownModDate = written
             hasPendingSave = false
             syncState = .synced(Date())
+            // The merged result is on disk now, so the branches it came from can go.
+            if conflictsAwaitingResolution { await closeConflicts() }
         } catch {
             Log.sync.error("Saving to iCloud Drive failed: \(error.localizedDescription, privacy: .public)")
             syncState = .failed(loc.t("Nie udało się zapisać do iCloud. Zmiany są bezpieczne na tym Macu.",
