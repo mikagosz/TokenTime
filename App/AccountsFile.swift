@@ -60,7 +60,7 @@ nonisolated struct AccountsFile: Sendable {
 
         // Newer iCloud Drive leaves the file visible but without content. Then the
         // state is read from an attribute rather than from the path existing.
-        if let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+        if let status = try? Self.uncached(url).resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
             .ubiquitousItemDownloadingStatus {
             return status == .notDownloaded ? .notDownloaded : .present
         }
@@ -87,7 +87,7 @@ nonisolated struct AccountsFile: Sendable {
     /// branches nobody opened. Measured 2026-08-12 on the real file: **10
     /// unresolved branches, all from the Mac mini, from 8 July to 11 August.**
     func hasUnresolvedConflicts() -> Bool {
-        (try? url.resourceValues(forKeys: [.ubiquitousItemHasUnresolvedConflictsKey]))?
+        (try? Self.uncached(url).resourceValues(forKeys: [.ubiquitousItemHasUnresolvedConflictsKey]))?
             .ubiquitousItemHasUnresolvedConflicts ?? false
     }
 
@@ -207,6 +207,36 @@ nonisolated struct AccountsFile: Sendable {
     }
 
     private static func modificationDate(of url: URL) -> Date? {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        (try? uncached(url).resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// A `URL` that has never answered a resource-value question before.
+    ///
+    /// This is the fix for "TokenTime does not sync between Macs", and the reason
+    /// is a trap rather than a bug in the sync logic: **a `URL` value caches every
+    /// resource value it has ever fetched**, and the cache belongs to the value, not
+    /// to the file. This struct holds one long-lived `url`, so from its second
+    /// question onwards it was told the *first* answer — forever.
+    ///
+    /// Two things followed, both of them the whole failure:
+    /// * `modificationDate()` froze at the date read shortly after launch, so
+    ///   `AccountStore.poll` computed `dateChanged == false` on every single tick;
+    /// * `NSFileCoordinator` hands the very same `URL` back to the accessor
+    ///   (measured: `readURL == url` is `true`), so `read()` and `write()` stamped
+    ///   `lastKnownModDate` with that same frozen date — the two sides of the
+    ///   comparison were equal because both were stale, which is why the mismatch
+    ///   never showed up as a wrong date in the interface.
+    ///
+    /// Net effect: the file was read **once per launch** and written forever after,
+    /// so each Mac kept overwriting the other's changes with a picture from its own
+    /// startup. Measured on the real file 2026-08-21: the other Mac's write landed
+    /// on disk at 12:34 and was still unread at 13:55, when a local edit flattened
+    /// it. It also explains the ten conflict branches from July — nobody re-read.
+    ///
+    /// Building the value afresh sidesteps the cache; `removeAllCachedResourceValues()`
+    /// would need the bridged `NSURL` to be the same object every time, which is not
+    /// something to rely on.
+    private static func uncached(_ url: URL) -> URL {
+        URL(fileURLWithPath: url.path)
     }
 }

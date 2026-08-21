@@ -18,23 +18,31 @@ struct AccountCardView: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let status = account.status(now: context.date)
             VStack(alignment: .leading, spacing: 6) {
-                nameRow
-                countdownSection(now: context.date, status: status)
-                weeklySection(now: context.date)
+                if confirmingDelete {
+                    deleteConfirmation
+                } else {
+                    nameRow
+                    countdownSection(now: context.date, status: status)
+                    weeklySection(now: context.date)
+                }
             }
             .padding(10)
             .background {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(status == .done ? Color.green.opacity(0.18)
-                                          : Color.secondary.opacity(0.12))
+                    .fill(confirmingDelete ? Color.red.opacity(0.14)
+                          : status == .done ? Color.green.opacity(0.18)
+                                            : Color.secondary.opacity(0.12))
             }
             .overlay {
-                if status == .done {
+                if confirmingDelete {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.red, lineWidth: 1.5)
+                } else if status == .done {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.green, lineWidth: 1.5)
                 }
             }
-            .shadow(color: status == .done ? Color.green.opacity(0.55) : .clear,
+            .shadow(color: status == .done && !confirmingDelete ? Color.green.opacity(0.55) : .clear,
                     radius: 8)
         }
         .popover(isPresented: $showingEntry, arrowEdge: .bottom) {
@@ -50,16 +58,51 @@ struct AccountCardView: View {
                 showingWeeklyEntry = false
             }
         }
-        .confirmationDialog(
-            loc.t("Usunąć konto „\(account.name)”?", "Delete the account “\(account.name)”?"),
-            isPresented: $confirmingDelete,
-            titleVisibility: .visible
-        ) {
-            Button(loc.t("Usuń konto", "Delete account"), role: .destructive) { store.remove(id: account.id) }
-            Button("Anuluj", role: .cancel) {}
-        } message: {
+    }
+
+    // MARK: Potwierdzenie usunięcia
+
+    /// The confirmation lives **inside the card**, not in a `confirmationDialog`.
+    ///
+    /// A dialog is a window of its own, and the menu bar panel closes the moment
+    /// another window takes key focus. So the panel — with this card and the
+    /// dialog's own buttons inside it — was torn down as the dialog appeared:
+    /// neither button ever ran its action, and from the outside the whole app
+    /// window simply vanished instead of deleting anything. Anything the user has
+    /// to click therefore has to stay within the panel.
+    private var deleteConfirmation: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(loc.t("Usunąć konto „\(account.name)”?", "Delete the account “\(account.name)”?"))
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
             Text(loc.t("Tej operacji nie można cofnąć.", "This cannot be undone."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button(loc.t("Anuluj", "Cancel")) { confirmingDelete = false }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .keyboardShortcut(.cancelAction)
+                Button(loc.t("Usuń konto", "Delete account")) { confirmDelete() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(.red)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Removes the account one turn of the run loop later.
+    ///
+    /// The button sits in the card that is about to disappear, and the `ForEach`
+    /// above still reads `$store.accounts` while this action returns — removing the
+    /// element right here means reading an index that is already gone. The same
+    /// reason `resetAndEnterNew()` defers its popover.
+    private func confirmDelete() {
+        let id = account.id
+        confirmingDelete = false
+        Task { @MainActor in store.remove(id: id) }
     }
 
     // MARK: Nazwa
