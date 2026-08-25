@@ -140,4 +140,9 @@ xcodebuild -project TokenTime.xcodeproj -scheme TokenTime test
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+The **source code** is MIT — see [LICENSE](LICENSE).
+
+The **artwork is not**: the app icon (`App/tokentime.icon/`), the menu bar icons
+(`App/Assets.xcassets/MenuBarIcon.imageset/`) and `docs/assets/tokentime-icon.png` are
+Copyright (c) 2026 mikagosz, all rights reserved, and are excluded from the MIT grant —
+see [NOTICE](NOTICE). If you fork this project, replace them with your own.
