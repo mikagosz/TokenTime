@@ -17,6 +17,10 @@ in the menu bar always shows the one resetting soonest, so a glance is enough.
 
 > The interface is in Polish.
 
+<p align="center">
+  <img src="docs/assets/tokentime-hero.png" width="100%" alt="TokenTime on macOS: the account list with a live countdown per account, one marked ready to reset, and the settings panel with the tracked Macs and the language switch">
+</p>
+
 ---
 
 ## Why
