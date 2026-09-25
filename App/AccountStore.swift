@@ -64,8 +64,14 @@ final class AccountStore {
         }
     }
 
+    /// The cloud file holds an entry this version cannot read — written by a newer
+    /// TokenTime on another Mac. Until that changes, nothing is written back: the
+    /// file would lose that entry and the newer Mac's changes with it (SBW S-P2-01).
+    @ObservationIgnored private var cloudHasUnreadableEntries = false
+
     /// Whether writing to the cloud file is allowed.
     private var canWriteToCloud: Bool {
+        if cloudHasUnreadableEntries { return false }
         switch syncState {
         case .synced, .failed, .localOnly: return true
         case .resolving, .downloading, .detached: return false
@@ -223,7 +229,11 @@ final class AccountStore {
     }
 
     static func shortCountdown(_ interval: TimeInterval) -> String {
-        let total = Int(interval)
+        // `Int(Double)` ends the process above `Int.max`. A date that far off can
+        // only be a bad value (from a file, another Mac, an older version) — shown
+        // capped, never a crash (SBW S-P1-01).
+        let bounded = interval.isFinite ? min(max(interval, 0), 1e15) : 0
+        let total = Int(bounded)
         if total >= 3600 {
             let hours = total / 3600
             let minutes = (total % 3600) / 60
@@ -231,7 +241,9 @@ final class AccountStore {
         } else if total >= 60 {
             return "\(total / 60)m"
         } else {
-            return "\(total)s"
+            // The label refreshes every 30 s, so a seconds count stood still for
+            // half a minute. The last minute reads as one (SBW S-P3-01).
+            return "<1m"
         }
     }
 
@@ -333,9 +345,12 @@ final class AccountStore {
             return
         }
 
+        var complete = true
         func entries(from snapshot: AccountsFile.Snapshot) -> [Account] {
             let stamp = snapshot.modificationDate ?? Date()
-            return Self.decode(snapshot.data).map { entry -> Account in
+            let read = Self.decodeEach(snapshot.data)
+            if !read.complete { complete = false }
+            return read.accounts.map { entry -> Account in
                 var entry = entry
                 entry.stampIfMissing(stamp)
                 return entry
@@ -346,7 +361,20 @@ final class AccountStore {
         // folded oldest to newest. Without the branches the merge was fed an
         // incomplete picture and the other Mac's changes could never win.
         let branches = await Self.offMain { file.readConflicts() }
-        let remote = Self.mergeSources([entries(from: snapshot)] + branches.map(entries(from:)))
+        let sources = [entries(from: snapshot)] + branches.map(entries(from:))
+
+        // 🔴 One unreadable account used to turn the whole file into an empty one:
+        // the merge then sent this Mac's list back and the panel said "synced",
+        // every 7 s, while the newer Mac's changes were undone (SBW S-P2-01).
+        cloudHasUnreadableEntries = !complete
+        guard complete else {
+            Log.sync.error("The accounts file holds entries this version cannot read — not syncing")
+            syncState = .failed(loc.t(
+                "Dane w iCloud zapisała nowsza wersja TokenTime. Zaktualizuj program na tym Macu — do tego czasu nic nie wysyłam.",
+                "The iCloud data was written by a newer TokenTime. Update the app on this Mac — until then nothing is sent."))
+            return
+        }
+        let remote = Self.mergeSources(sources)
         if !branches.isEmpty {
             Log.sync.notice("Merging \(branches.count, privacy: .public) unresolved iCloud conflict version(s)")
         }
@@ -508,8 +536,26 @@ final class AccountStore {
     }
 
     private static func decode(_ data: Data?) -> [Account] {
-        guard let data else { return [] }
-        return (try? JSONDecoder().decode([Account].self, from: data)) ?? []
+        decodeEach(data).accounts
+    }
+
+    /// Accounts read one by one. `complete` is false when any entry could not be
+    /// read — a Mac or a field shape this version does not know — or when the data
+    /// is not a list at all. Decoding the array in one go lost every account for
+    /// the sake of one.
+    static func decodeEach(_ data: Data?) -> (accounts: [Account], complete: Bool) {
+        guard let data, !data.isEmpty else { return ([], true) }
+        guard let entries = try? JSONDecoder().decode([Lossy].self, from: data) else { return ([], false) }
+        let accounts = entries.compactMap(\.account)
+        return (accounts, accounts.count == entries.count)
+    }
+
+    /// One array element that may fail on its own without failing the array.
+    private struct Lossy: Decodable {
+        let account: Account?
+        init(from decoder: any Decoder) throws {
+            account = try? Account(from: decoder)
+        }
     }
 
     private static func split(_ entries: [Account]) -> (live: [Account], deleted: [Account]) {

@@ -57,6 +57,17 @@ struct DurationParserTests {
         #expect(DurationParser.parse(input) == nil)
     }
 
+    @Test("A week is the ceiling (SBW S-P1-01)")
+    func weekIsTheCeiling() {
+        #expect(DurationParser.parse("168") == hm(168))
+        #expect(DurationParser.parse("168:00") == hm(168))
+        #expect(DurationParser.parse("167:59") == hm(167, 59))
+        #expect(DurationParser.parse("168:01") == nil)
+        #expect(DurationParser.parse("169") == nil)
+        #expect(DurationParser.parse("2562047788015216") == nil)
+        #expect(DurationParser.parse("9223372036854775807") == nil)
+    }
+
     @Test("Formats the README once promised are still not accepted", arguments: [
         "4h", "1h30m", "90m", "45s",
     ])

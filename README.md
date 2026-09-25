@@ -37,7 +37,8 @@ head or in a note somewhere. TokenTime puts it in the menu bar and keeps it ther
   pencil icon).
 - **Set a reset with one text field.** Type a clock duration — `3:30` is three
   and a half hours, `0:45` is forty-five minutes — or a bare number of hours, so
-  `4` means four hours. Nothing else is accepted: `4h` and `90m` are rejected.
+  `4` means four hours, up to 168 hours (a week). Nothing else is accepted: `4h`
+  and `90m` are rejected.
   The popover previews the resulting clock time and refuses anything it can't
   parse.
 - **Native countdowns** via `Text(timerInterval:)`, so the numbers tick without a

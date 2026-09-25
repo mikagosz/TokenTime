@@ -85,10 +85,20 @@ struct ShortCountdownTests {
         #expect(AccountStore.shortCountdown(60) == "1m")
     }
 
-    @Test("Under a minute — seconds")
-    func secondsOnly() {
-        #expect(AccountStore.shortCountdown(59) == "59s")
-        #expect(AccountStore.shortCountdown(0) == "0s")
+    // Changed on purpose in 1.3.3 (SBW S-P3-01): the label refreshes every 30 s,
+    // so a seconds count stood still for half a minute.
+    @Test("Under a minute — one line, no stale seconds")
+    func lastMinute() {
+        #expect(AccountStore.shortCountdown(59) == "<1m")
+        #expect(AccountStore.shortCountdown(0) == "<1m")
+    }
+
+    @Test("A date far beyond Int does not crash (SBW S-P1-01)")
+    func hugeIntervalIsCapped() {
+        #expect(AccountStore.shortCountdown(9.3e18).hasSuffix("m"))
+        #expect(AccountStore.shortCountdown(.infinity) == "<1m")
+        #expect(AccountStore.shortCountdown(.nan) == "<1m")
+        #expect(AccountStore.shortCountdown(-5) == "<1m")
     }
 }
 

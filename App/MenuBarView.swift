@@ -8,6 +8,7 @@ struct MenuBarView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchNote: String?
     @State private var showingSettings = false
+    @State private var panelVisible = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,6 +23,8 @@ struct MenuBarView: View {
             footer
         }
         .frame(width: 320, height: 450)
+        .background(WindowVisibilityReader(visible: $panelVisible))
+        .environment(\.panelVisible, panelVisible)
         // The login item state is read every time the panel opens, not once when
         // the view is created — the user may have disabled it in the meantime
         // w Ustawieniach systemowych.

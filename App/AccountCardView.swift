@@ -11,39 +11,22 @@ struct AccountCardView: View {
     @State private var showingWeeklyEntry = false
     @State private var confirmingDelete = false
     @FocusState private var nameFocused: Bool
+    @Environment(\.panelVisible) private var panelVisible
 
     var body: some View {
-        // The whole card refreshes natively once a second — which also lets it
-        // flip to "done" exactly when the reset moment arrives.
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let status = account.status(now: context.date)
-            VStack(alignment: .leading, spacing: 6) {
-                if confirmingDelete {
-                    deleteConfirmation
-                } else {
-                    nameRow
-                    countdownSection(now: context.date, status: status)
-                    weeklySection(now: context.date)
+        Group {
+            // The whole card refreshes once a second while the panel is on screen —
+            // which also lets it flip to "done" exactly when the reset arrives. A
+            // `.window` menu bar extra keeps its content alive when closed, and the
+            // one-second clock cost ~1 % CPU all day behind a closed panel
+            // (SBW W-P2-01). Closed, the card is drawn once and the clock stops.
+            if panelVisible {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    card(now: context.date)
                 }
+            } else {
+                card(now: Date())
             }
-            .padding(10)
-            .background {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(confirmingDelete ? Color.red.opacity(0.14)
-                          : status == .done ? Color.green.opacity(0.18)
-                                            : Color.secondary.opacity(0.12))
-            }
-            .overlay {
-                if confirmingDelete {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.red, lineWidth: 1.5)
-                } else if status == .done {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.green, lineWidth: 1.5)
-                }
-            }
-            .shadow(color: status == .done && !confirmingDelete ? Color.green.opacity(0.55) : .clear,
-                    radius: 8)
         }
         .popover(isPresented: $showingEntry, arrowEdge: .bottom) {
             DurationEntry { interval in
@@ -58,6 +41,37 @@ struct AccountCardView: View {
                 showingWeeklyEntry = false
             }
         }
+    }
+
+    private func card(now: Date) -> some View {
+        let status = account.status(now: now)
+        return VStack(alignment: .leading, spacing: 6) {
+            if confirmingDelete {
+                deleteConfirmation
+            } else {
+                nameRow
+                countdownSection(now: now, status: status)
+                weeklySection(now: now)
+            }
+        }
+        .padding(10)
+        .background {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(confirmingDelete ? Color.red.opacity(0.14)
+                      : status == .done ? Color.green.opacity(0.18)
+                                        : Color.secondary.opacity(0.12))
+        }
+        .overlay {
+            if confirmingDelete {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.red, lineWidth: 1.5)
+            } else if status == .done {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.green, lineWidth: 1.5)
+            }
+        }
+        .shadow(color: status == .done && !confirmingDelete ? Color.green.opacity(0.55) : .clear,
+                radius: 8)
     }
 
     // MARK: Potwierdzenie usunięcia
@@ -473,9 +487,21 @@ private struct WeeklyResetEntry: View {
 // MARK: - Parser czasu trwania
 
 enum DurationParser {
+    /// The longest duration accepted — a week, the longest window there is.
+    /// Without a ceiling any hour count that fit in `Int` passed, and from about
+    /// 2.5e15 hours on the menu bar crashed converting the remaining time back to
+    /// `Int` — on every launch, because the date is saved at once (SBW S-P1-01).
+    static let maxHours = 168
+
     /// Parsuje format zegarowy "H:MM", np. "3:30", "2:45", "0:30".
-    /// A bare "3" (no colon) means 3 hours. Returns nil for a malformed value.
+    /// A bare "3" (no colon) means 3 hours. Returns nil for a malformed value
+    /// and for anything longer than `maxHours`.
     static func parse(_ input: String) -> TimeInterval? {
+        guard let total = parseUnbounded(input), total <= TimeInterval(maxHours) * 3600 else { return nil }
+        return total
+    }
+
+    private static func parseUnbounded(_ input: String) -> TimeInterval? {
         let text = input.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return nil }
 

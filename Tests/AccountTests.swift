@@ -150,3 +150,44 @@ struct AccountDecodingTests {
         #expect(decoded.updatedAt == original.updatedAt)
     }
 }
+
+// MARK: - Reading the cloud file account by account (SBW S-P2-01)
+
+@Suite("Decoding the accounts file")
+struct DecodeEachTests {
+    private func entry(_ name: String, computers: String = "") -> String {
+        """
+        {"resetDate":807230396.1,"windowHours":3,"computers":[\(computers)],\
+        "name":"\(name)","id":"\(UUID().uuidString)"}
+        """
+    }
+
+    @Test("Every entry readable — complete")
+    func allReadable() {
+        let data = Data("[\(entry("a", computers: "\"macMini\"")),\(entry("b"))]".utf8)
+        let read = AccountStore.decodeEach(data)
+        #expect(read.accounts.count == 2)
+        #expect(read.complete)
+    }
+
+    @Test("A Mac this version does not know costs that one entry, and says so")
+    func unknownComputer() {
+        let data = Data("[\(entry("a", computers: "\"macPro\"")),\(entry("b"))]".utf8)
+        let read = AccountStore.decodeEach(data)
+        #expect(read.accounts.map(\.name) == ["b"])
+        #expect(!read.complete)
+    }
+
+    @Test("Not a list at all — incomplete, not empty-and-fine")
+    func notAList() {
+        let read = AccountStore.decodeEach(Data("{\"x\":1}".utf8))
+        #expect(read.accounts.isEmpty)
+        #expect(!read.complete)
+    }
+
+    @Test("No data — an empty, complete list")
+    func noData() {
+        #expect(AccountStore.decodeEach(nil).complete)
+        #expect(AccountStore.decodeEach(Data()).complete)
+    }
+}
