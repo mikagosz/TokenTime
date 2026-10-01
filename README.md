@@ -95,10 +95,19 @@ head or in a note somewhere. TokenTime puts it in the menu bar and keeps it ther
 
 ## Privacy
 
-TokenTime makes **no network connections** and talks to no API — not Anthropic's,
-not anyone's. It knows nothing about your accounts beyond the names you type and
-the times you enter. There is no telemetry and no analytics. The only thing that
-leaves your Mac is the accounts file, and only into your own iCloud Drive.
+TokenTime talks to no API — not Anthropic's, not anyone's. It knows nothing about
+your accounts beyond the names you type and the times you enter. There is no
+telemetry and no analytics. The accounts file leaves your Mac only into your own
+iCloud Drive.
+
+Its one network request is the update check: once a month it asks
+`downloads.fractal8.eu/TokenTime/api/error-update/version-check` for the newest
+version number and sends nothing else. A newer version opens a window with
+**Install and Restart**, **Skip This Version** or a manual download — nothing
+installs until you click. The installer checks the package's SHA-256 and requires
+the new app to meet the running one's code signature requirement. It runs on
+[ErrorUpdate](https://github.com/mikagosz/ErrorUpdate) 1.0.1 with crash reporting
+off. The switch and **Check Now** sit under the gear.
 
 ## Requirements
 
@@ -113,7 +122,13 @@ cd TokenTime
 open TokenTime.xcodeproj
 ```
 
-Then press ⌘R.
+Then press ⌘R. A release build for both Apple silicon and Intel, without the
+debugging entitlement plain `xcodebuild build` adds:
+
+```bash
+xcodebuild -project TokenTime.xcodeproj -scheme TokenTime -configuration Release \
+    -destination 'generic/platform=macOS' CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO build
+```
 
 The project pins a local code-signing identity that won't be in your keychain. Set
 **Signing & Capabilities → Signing Certificate** to *Sign to Run Locally*, or point
@@ -134,7 +149,9 @@ means it isn't headed for the App Store.
 | `MenuBarView.swift` | the main panel |
 | `AccountCardView.swift` | a single account card, plus the duration parser |
 | `MenuBarLabel.swift` | the menu bar label |
-| `SettingsView.swift` | which computers you own |
+| `SettingsView.swift` | which computers you own, updates, language |
+| `Updates.swift` | in-app updates through ErrorUpdate: monthly check, the update window, install and restart |
+| `UpdateSupport.swift` | which download address is allowed, and the restart helper that waits for the old copy to quit |
 | `LaunchAtLogin.swift` | login item registration |
 | `Log.swift` | `os.Logger` categories |
 

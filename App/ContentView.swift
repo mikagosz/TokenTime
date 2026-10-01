@@ -13,7 +13,7 @@ struct TokenTimeApp: App {
     /// Under `xcodebuild test` this app is the test host, so its own store would
     /// start talking to the real accounts file in iCloud Drive. The tests never
     /// need it — they check pure functions — so the host store stays local.
-    private static var hostsTests: Bool {
+    static var hostsTests: Bool {
         let environment = ProcessInfo.processInfo.environment
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestBundlePath"] != nil
@@ -35,5 +35,7 @@ struct TokenTimeApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // Not as the test host: the tests check pure functions and must not ask the server.
+        if !TokenTimeApp.hostsTests { Updates.shared.start() }
     }
 }
