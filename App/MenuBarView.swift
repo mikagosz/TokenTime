@@ -66,6 +66,15 @@ struct MenuBarView: View {
             .accessibilityLabel("Dodaj konto")
             .disabled(!store.canEdit)
             Button {
+                HelpWindow.shared.show()
+            } label: {
+                Image(systemName: "questionmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help(HelpContent.buttonHelp.current)
+            .accessibilityLabel(HelpContent.buttonHelp.current)
+            Button {
                 showingSettings = true
             } label: {
                 Image(systemName: "gearshape")

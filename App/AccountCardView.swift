@@ -363,10 +363,16 @@ struct AccountCardView: View {
 
 // MARK: - Wpisywanie czasu (popover z jednym polem)
 
-private struct DurationEntry: View {
+struct DurationEntry: View {
     let onCommit: (TimeInterval) -> Void
 
     @State private var text = ""
+
+    /// `text`: already typed — the Help picture shows the field filled in.
+    init(text: String = "", onCommit: @escaping (TimeInterval) -> Void) {
+        _text = State(initialValue: text)
+        self.onCommit = onCommit
+    }
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -426,11 +432,18 @@ private struct DurationEntry: View {
 /// Takes the reset exactly as Anthropic states it — `Sat 12 AM` — so there is nothing
 /// to convert in one's head. A picker for day + hour + AM/PM would be three controls
 /// for what the user already has on screen as one line of text.
-private struct WeeklyResetEntry: View {
+struct WeeklyResetEntry: View {
     let current: WeeklyReset?
     let onCommit: (WeeklyReset?) -> Void
 
     @State private var text = ""
+
+    /// `text`: already typed — the Help picture shows the field filled in.
+    init(current: WeeklyReset?, text: String = "", onCommit: @escaping (WeeklyReset?) -> Void) {
+        self.current = current
+        _text = State(initialValue: text)
+        self.onCommit = onCommit
+    }
     @FocusState private var focused: Bool
 
     var body: some View {

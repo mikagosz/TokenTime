@@ -6,9 +6,14 @@ import AppKit
 @main
 struct TokenTimeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var store = TokenTimeApp.hostsTests
+    @State private var store = TokenTimeApp.hostsTests || HelpExport.requested
         ? AccountStore(fileURL: nil, observeTermination: false)
         : AccountStore()
+
+    init() {
+        // `--export-help` / `--export-help-window`: PNGs of Help, then quit — before the menu bar item appears.
+        HelpExport.runIfRequested()
+    }
 
     /// Under `xcodebuild test` this app is the test host, so its own store would
     /// start talking to the real accounts file in iCloud Drive. The tests never
@@ -37,5 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         // Not as the test host: the tests check pure functions and must not ask the server.
         if !TokenTimeApp.hostsTests { Updates.shared.start() }
+        // `--show-help`: the Help window right away — for a look after changes, without opening the panel.
+        if CommandLine.arguments.contains("--show-help") { HelpWindow.shared.show() }
     }
 }

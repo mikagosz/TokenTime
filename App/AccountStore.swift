@@ -97,6 +97,9 @@ final class AccountStore {
     @ObservationIgnored private static let downloadPatience: TimeInterval = 20
 
     @ObservationIgnored private let file: AccountsFile?
+    /// Where the local cache and the Mac settings live. The Help pictures pass a sample store, so drawing
+    /// made-up accounts never touches the real cache.
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let pollInterval: Duration
 
     // MARK: Internal state
@@ -134,20 +137,23 @@ final class AccountStore {
     ///   - fileURL: where the accounts file lives; `nil` = purely local (tests).
     ///   - pollInterval: how often to check the file for changes from another Mac.
     ///   - observeTermination: whether to add the emergency save on app termination.
+    ///   - defaults: the local cache and Mac settings; a separate store for the Help pictures.
     init(fileURL: URL? = AccountsFile.defaultURL,
          pollInterval: Duration = .seconds(7),
-         observeTermination: Bool = true) {
+         observeTermination: Bool = true,
+         defaults: UserDefaults = .standard) {
         self.file = fileURL.map { AccountsFile(url: $0) }
         self.pollInterval = pollInterval
+        self.defaults = defaults
 
         // The local cache is shown at once, so the panel does not flash empty while
         // the cloud state is being resolved. `isLoading` keeps that load from being
         // taken for a user change and written back to the file.
         accounts = []
-        let cached = Self.split(Self.decode(UserDefaults.standard.data(forKey: Self.storageKey)))
+        let cached = Self.split(Self.decode(defaults.data(forKey: Self.storageKey)))
         accounts = cached.live
         tombstones = cached.deleted
-        enabledComputers = Self.loadEnabledComputers()
+        enabledComputers = Self.loadEnabledComputers(defaults)
         isLoading = false
 
         guard file != nil else {
@@ -169,6 +175,9 @@ final class AccountStore {
     }
 
     // MARK: Operacje
+
+    /// The Help pictures: the sync marker as on a Mac in sync, not the orange "local only" of a store without a file.
+    func showAsSynced() { syncState = .synced(Date()) }
 
     func add() {
         accounts.append(Account(name: "Nowe konto"))
@@ -528,7 +537,7 @@ final class AccountStore {
     /// process ends abruptly it is what saves the last change.
     private func cacheLocally() {
         guard let data = encodeEntries() else { return }
-        UserDefaults.standard.set(data, forKey: Self.storageKey)
+        defaults.set(data, forKey: Self.storageKey)
     }
 
     private func encodeEntries() -> Data? {
@@ -574,16 +583,16 @@ final class AccountStore {
 
     // MARK: Mac settings (local — not synchronised)
 
-    private static func loadEnabledComputers() -> Set<Computer> {
+    private static func loadEnabledComputers(_ defaults: UserDefaults) -> Set<Computer> {
         // Nothing stored = first launch → every Mac enabled.
-        guard let raw = UserDefaults.standard.array(forKey: enabledComputersKey) as? [String] else {
+        guard let raw = defaults.array(forKey: enabledComputersKey) as? [String] else {
             return Set(Computer.allCases)
         }
         return Set(raw.compactMap(Computer.init(rawValue:)))
     }
 
     private func saveEnabledComputers() {
-        UserDefaults.standard.set(enabledComputers.map(\.rawValue), forKey: Self.enabledComputersKey)
+        defaults.set(enabledComputers.map(\.rawValue), forKey: Self.enabledComputersKey)
     }
 }
 
