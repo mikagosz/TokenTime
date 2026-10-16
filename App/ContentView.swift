@@ -45,4 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `--show-help`: the Help window right away — for a look after changes, without opening the panel.
         if CommandLine.arguments.contains("--show-help") { HelpWindow.shared.show() }
     }
+
+    /// `tokentime://reset?konto=…&za=H:MM` — see `URLCommands.swift`.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        urls.forEach { URLCommandRouter.shared.handle($0) }
+    }
 }

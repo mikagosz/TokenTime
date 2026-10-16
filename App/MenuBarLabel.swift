@@ -20,6 +20,9 @@ struct MenuBarLabel: View {
             }
         }
         .task {
+            // The label exists from launch, the panel only once opened — so commands
+            // from tokentime:// get the store here (`URLCommands.swift`).
+            URLCommandRouter.shared.attach(store)
             while !Task.isCancelled {
                 now = Date()
                 try? await Task.sleep(for: .seconds(30))
